@@ -78,6 +78,11 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- 6) Atualiza a consulta de primeiro acesso para também devolver empresa.
+-- IMPORTANTE: o Supabase/PostgreSQL não permite trocar o tipo de retorno
+-- de uma função existente usando apenas CREATE OR REPLACE.
+-- Por isso a função antiga precisa ser removida antes de recriar.
+drop function if exists public.buscar_aluno_cadastrado(text, text);
+
 create or replace function public.buscar_aluno_cadastrado(
   p_email text,
   p_area text default 'alivio_tensao'
