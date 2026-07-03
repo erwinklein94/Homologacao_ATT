@@ -1,6 +1,6 @@
 # Como ativar as provas ATT 4 no Supabase
 
-Este pacote já contém as 2 provas ATT 4 configuradas no arquivo `js/seed-data.js` e o botão **Ativar/atualizar ATT 4** na página **Dados & provas > Editar provas**.
+Este pacote já contém as 2 provas ATT 4 configuradas no arquivo `js/seed-data.js`.
 
 Para gravar as provas de verdade no banco do Supabase, rode este SQL:
 
@@ -26,4 +26,3 @@ As provas devem aparecer como:
 - `Prova ATT 4 — Parte 1` — 10 questões — Ativa
 - `Prova ATT 4 — Parte 2` — 10 questões — Ativa
 
-Se algo ficar diferente, use o botão **Ativar/atualizar ATT 4** na própria tela de edição de provas.

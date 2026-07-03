@@ -432,15 +432,13 @@ function conferirSeed() {
           <b>${titulo}</b><br>
           ${detalhe}
         </div>
-        <button class="btn btn--primary" data-btn-seed>Ativar/atualizar provas ATT 4</button>
       </div>`;
-    banner.querySelector("[data-btn-seed]").addEventListener("click", (evt) => carregarSeed(evt));
   }
 }
 
 async function carregarSeed(e, opcoes = {}) {
   const btn = e?.target;
-  const textoOriginalBtn = btn?.textContent || "Ativar/atualizar provas ATT 4";
+  const textoOriginalBtn = btn?.textContent || "Carregar provas";
   const substituirArea = !!opcoes.substituirArea;
   const seedArea = obterSeedArea();
   if (!seedArea.length) {
@@ -484,7 +482,7 @@ async function carregarSeed(e, opcoes = {}) {
   } catch (err) {
     console.error(err);
     alert("Não foi possível carregar as provas: " + (err.message || err));
-    travarBtn(btn, false, substituirArea ? "Substituir provas do treinamento" : textoOriginalBtn);
+    travarBtn(btn, false, substituirArea ? "Restaurar provas" : textoOriginalBtn);
   }
 }
 
@@ -494,7 +492,7 @@ function renderListaProvas() {
     host.innerHTML = `
       <div class="card center">
         <h3>Nenhuma prova cadastrada</h3>
-        <p class="muted">Use o botão acima para carregar as provas padrão da área, ou crie uma nova.</p>
+        <p class="muted">Nenhuma prova foi encontrada para este treinamento. Crie uma nova prova ou carregue as provas pelo SQL no Supabase.</p>
         <button class="btn btn--primary" data-nova-prova>Criar prova em branco</button>
       </div>`;
     host.querySelector("[data-nova-prova]").addEventListener("click", criarProvaVazia);
@@ -516,7 +514,6 @@ function renderListaProvas() {
       <div class="toolbar">
         <h2 style="margin:0">Provas cadastradas</h2>
         <span class="spacer"></span>
-        ${adm.perfil?.area === "alivio_tensao" && obterSeedArea().length ? '<button class="btn btn--ghost btn--sm" data-atualizar-seed>Ativar/atualizar ATT 4</button><button class="btn btn--ghost btn--sm" data-reset-seed>Substituir provas do treinamento</button>' : ''}
         <button class="btn btn--ghost btn--sm" data-nova-prova>+ Nova prova</button>
       </div>
       ${cards}
@@ -525,16 +522,7 @@ function renderListaProvas() {
 
   host.querySelectorAll("[data-editar]").forEach((b) =>
     b.addEventListener("click", () => abrirEditor(b.dataset.editar)));
-  const btnAtualizar = host.querySelector("[data-atualizar-seed]");
-  if (btnAtualizar) btnAtualizar.addEventListener("click", (evt) => carregarSeed(evt));
-  const btnReset = host.querySelector("[data-reset-seed]");
-  if (btnReset) {
-    btnReset.addEventListener("click", (evt) => {
-      const qtd = obterSeedArea().length;
-      const ok = confirm(`Isso vai excluir as provas atuais do treinamento "${getSubareaMeta(adm.subarea).nome}" e carregar ${qtd} prova(s) padrão. As provas dos outros treinamentos e o histórico de tentativas já realizadas serão mantidos. Deseja continuar?`);
-      if (ok) carregarSeed(evt, { substituirArea: true });
-    });
-  }
+  // Botões de carga/substituição das provas padrão removidos da interface.
   host.querySelector("[data-nova-prova]").addEventListener("click", criarProvaVazia);
 }
 
