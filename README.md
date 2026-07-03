@@ -113,4 +113,3 @@ on conflict (id, area) do update set role = 'admin';
 Repositório → **Settings → Pages** → Branch `main`, pasta `/ (root)`. O arquivo `.nojekyll`
 já está incluído. Lembre que o `js/config.js` com a chave publishable ficará visível no
 repositório — isso é esperado e seguro (ver seção 3).
-
