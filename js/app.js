@@ -150,10 +150,17 @@ async function garantirPerfilArea(areaPreferida = null, dados = {}) {
 
   if (error) { console.error("Erro ao carregar perfil:", error.message); return null; }
 
-  // Autodefesa: a conta existe no Auth, mas ainda não tem perfil nesta área.
-  // Cria o vínculo como aluno apenas para a área atual.
+  // A criação automática de perfil agora só acontece quando o fluxo de
+  // "Primeiro acesso" informa explicitamente que o aluno foi autorizado
+  // pelo cadastro feito pelo administrador. Isso evita que qualquer conta
+  // existente no Auth vire aluno só por tentar entrar no site.
   if (!data) {
-    const novo = dadosPerfilPadrao(sessao, area, dados);
+    if (!dados || dados.criarSeNaoExistir !== true) {
+      return null;
+    }
+
+    const { criarSeNaoExistir, ...dadosLimpos } = dados;
+    const novo = dadosPerfilPadrao(sessao, area, dadosLimpos);
     const ins = await sb
       .from("profiles")
       .insert(novo)
@@ -212,7 +219,7 @@ function montarCabecalho(perfil) {
   const linksAdmin = [
     ["dashboard.html", "Painel"],
     ["admin.html", "Dados &amp; provas"],
-    ["prova.html", "Aplicar prova"],
+    ["cadastro-alunos.html", "Cadastro de Alunos"],
   ];
   const linksAluno = [
     ["prova.html", "Fazer prova"],

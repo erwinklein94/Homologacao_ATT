@@ -140,6 +140,29 @@ function ligarFormAlunoLogin(areaLogin) {
 
 function ligarFormAlunoCriar(areaLogin) {
   const f = document.querySelector("[data-form-aluno-criar]");
+  const preview = document.querySelector("[data-cadastro-preview]");
+
+  // Mostra, de forma simples, se o e-mail já está liberado pelo administrador.
+  if (preview && f.email) {
+    let t = null;
+    f.email.addEventListener("input", () => {
+      clearTimeout(t);
+      const email = f.email.value.trim();
+      preview.textContent = "Digite o e-mail informado ao administrador.";
+      if (!email || !email.includes("@")) return;
+      t = setTimeout(async () => {
+        const { data, error } = await buscarCadastroAluno(email, areaLogin);
+        if (error) {
+          preview.textContent = "Não consegui consultar o cadastro no Supabase.";
+          return;
+        }
+        preview.textContent = data
+          ? `Cadastro encontrado: ${data.nome || email}${data.matricula ? " · " + data.matricula : ""}`
+          : "E-mail ainda não cadastrado pelo administrador.";
+      }, 450);
+    });
+  }
+
   f.addEventListener("submit", async (e) => {
     e.preventDefault();
     msg("[data-msg-aluno-criar]", null);
@@ -150,26 +173,46 @@ function ligarFormAlunoCriar(areaLogin) {
       return msg("[data-msg-aluno-criar]", "erro", "As senhas não conferem.");
     }
     const btn = f.querySelector("button[type=submit]");
-    travar(btn, true, "Criando acesso…");
+    travar(btn, true, "Validando cadastro…");
 
     const email = f.email.value.trim();
-    const dadosPerfil = { nome: f.nome.value.trim(), matricula: f.matricula.value.trim() };
+    const cadastro = await buscarCadastroAluno(email, areaLogin);
+    if (cadastro.error) {
+      console.error(cadastro.error);
+      msg("[data-msg-aluno-criar]", "erro",
+        "Não consegui consultar o cadastro de alunos. Rode o SQL sql/cadastro-alunos.sql no Supabase e tente novamente.");
+      travar(btn, false, "Criar primeiro acesso");
+      return;
+    }
+    if (!cadastro.data) {
+      msg("[data-msg-aluno-criar]", "erro",
+        "Este e-mail ainda não foi cadastrado pelo administrador. Peça para o administrador cadastrar seu aluno primeiro.");
+      travar(btn, false, "Criar primeiro acesso");
+      return;
+    }
 
+    const dadosPerfil = {
+      nome: cadastro.data.nome || email.split("@")[0],
+      matricula: cadastro.data.matricula || null,
+      criarSeNaoExistir: true,
+    };
+
+    travar(btn, true, "Criando acesso…");
     const { data, error } = await sb.auth.signUp({
       email,
       password: f.senha.value,
-      options: { data: { ...dadosPerfil, area: areaLogin } },
+      options: { data: { nome: dadosPerfil.nome, matricula: dadosPerfil.matricula, area: areaLogin } },
     });
 
     if (error) {
       // O Supabase Auth não permite duplicar o mesmo e-mail.
-      // Se o e-mail já existe na outra área, entramos com a senha atual e criamos
-      // apenas o perfil separado desta área em public.profiles.
+      // Se o e-mail já existe, entramos com a senha atual e criamos apenas o
+      // perfil da área atual, desde que o cadastro do aluno esteja autorizado.
       if (emailJaCadastrado(error)) {
         const login = await sb.auth.signInWithPassword({ email, password: f.senha.value });
         if (login.error) {
           msg("[data-msg-aluno-criar]", "erro",
-            "Este e-mail já existe em outra área. Para liberar o primeiro acesso aqui, use a mesma senha do cadastro anterior.");
+            "Este e-mail já existe. Para liberar o primeiro acesso aqui, use a mesma senha do cadastro anterior.");
           travar(btn, false, "Criar primeiro acesso");
           return;
         }
@@ -178,7 +221,7 @@ function ligarFormAlunoCriar(areaLogin) {
           const perfilArea = await window.garantirPerfilArea(areaLogin, dadosPerfil);
           if (!perfilArea) {
             msg("[data-msg-aluno-criar]", "erro",
-              "Não consegui criar o perfil desta área. Confira se o SQL multiárea foi rodado no Supabase.");
+              "Não consegui criar o perfil desta área. Confira se o SQL do cadastro de alunos foi rodado no Supabase.");
             travar(btn, false, "Criar primeiro acesso");
             return;
           }
@@ -206,6 +249,18 @@ function ligarFormAlunoCriar(areaLogin) {
       travar(btn, false, "Criar primeiro acesso");
     }
   });
+}
+
+async function buscarCadastroAluno(email, areaLogin) {
+  const normalizado = String(email || "").trim().toLowerCase();
+  if (!normalizado) return { data: null, error: null };
+  const { data, error } = await sb.rpc("buscar_aluno_cadastrado", {
+    p_email: normalizado,
+    p_area: areaLogin,
+  });
+  if (error) return { data: null, error };
+  const linha = Array.isArray(data) ? (data[0] || null) : data;
+  return { data: linha, error: null };
 }
 
 // ---- helpers de UI ----

@@ -17,6 +17,10 @@ const estado = {
 document.addEventListener("DOMContentLoaded", async () => {
   const perfil = await protegerPagina();
   if (!perfil) return;
+  if (perfil.role === "admin") {
+    window.location.replace("dashboard.html");
+    return;
+  }
   estado.perfil = perfil;
 
   await Promise.all([carregarProvas(), carregarInstrutores()]);
