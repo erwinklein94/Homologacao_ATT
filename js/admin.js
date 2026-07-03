@@ -400,21 +400,39 @@ function nomeAreaAtual() {
   return meta?.titulo || "esta área";
 }
 
+function diagnosticarSeedArea() {
+  const seedArea = obterSeedArea();
+  const porCodigo = new Map(adm.provas.map((p) => [p.codigo, p]));
+  const faltando = seedArea.filter((p) => !porCodigo.has(p.codigo));
+  const inativas = seedArea.filter((p) => porCodigo.has(p.codigo) && porCodigo.get(p.codigo)?.ativo !== true);
+  return {
+    seedArea,
+    faltando,
+    inativas,
+    precisaAtualizar: seedArea.length > 0 && (adm.provas.length === 0 || faltando.length > 0 || inativas.length > 0),
+  };
+}
+
 function conferirSeed() {
   const banner = document.querySelector("[data-seed-banner]");
   if (!banner) return;
-  const semProvas = adm.provas.length === 0;
-  const seedArea = obterSeedArea();
-  const temSeed = Array.isArray(seedArea) && seedArea.length > 0;
-  banner.classList.toggle("hidden", !(semProvas && temSeed));
-  if (semProvas && temSeed) {
+  const diag = diagnosticarSeedArea();
+  const { seedArea, faltando, inativas, precisaAtualizar } = diag;
+  banner.classList.toggle("hidden", !precisaAtualizar);
+  if (precisaAtualizar) {
+    const titulo = adm.provas.length === 0
+      ? `Nenhuma prova cadastrada em ${escaparHtml(nomeAreaAtual())}.`
+      : `Há prova padrão faltando ou inativa em ${escaparHtml(nomeAreaAtual())}.`;
+    const detalhe = adm.provas.length === 0
+      ? `Carregue as ${seedArea.length} provas ATT 4 no Supabase e deixe tudo ativo para os alunos.`
+      : `Faltando: ${faltando.length}. Inativas: ${inativas.length}. Use o botão para atualizar/ativar sem apagar histórico de tentativas.`;
     banner.innerHTML = `
       <div class="alerta alerta--info" style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:240px">
-          <b>Nenhuma prova cadastrada em ${escaparHtml(nomeAreaAtual())}.</b><br>
-          Carregue as ${seedArea.length} provas padrão desta área no Supabase (você poderá editar tudo depois).
+          <b>${titulo}</b><br>
+          ${detalhe}
         </div>
-        <button class="btn btn--primary" data-btn-seed>Carregar provas padrão da área</button>
+        <button class="btn btn--primary" data-btn-seed>Ativar/atualizar provas ATT 4</button>
       </div>`;
     banner.querySelector("[data-btn-seed]").addEventListener("click", (evt) => carregarSeed(evt));
   }
@@ -422,6 +440,7 @@ function conferirSeed() {
 
 async function carregarSeed(e, opcoes = {}) {
   const btn = e?.target;
+  const textoOriginalBtn = btn?.textContent || "Ativar/atualizar provas ATT 4";
   const substituirArea = !!opcoes.substituirArea;
   const seedArea = obterSeedArea();
   if (!seedArea.length) {
@@ -465,7 +484,7 @@ async function carregarSeed(e, opcoes = {}) {
   } catch (err) {
     console.error(err);
     alert("Não foi possível carregar as provas: " + (err.message || err));
-    travarBtn(btn, false, substituirArea ? "Substituir provas da área" : "Carregar provas padrão da área");
+    travarBtn(btn, false, substituirArea ? "Substituir provas do treinamento" : textoOriginalBtn);
   }
 }
 
@@ -497,7 +516,7 @@ function renderListaProvas() {
       <div class="toolbar">
         <h2 style="margin:0">Provas cadastradas</h2>
         <span class="spacer"></span>
-        ${adm.perfil?.area === "alivio_tensao" && obterSeedArea().length ? '<button class="btn btn--ghost btn--sm" data-reset-seed>Substituir provas do treinamento</button>' : ''}
+        ${adm.perfil?.area === "alivio_tensao" && obterSeedArea().length ? '<button class="btn btn--ghost btn--sm" data-atualizar-seed>Ativar/atualizar ATT 4</button><button class="btn btn--ghost btn--sm" data-reset-seed>Substituir provas do treinamento</button>' : ''}
         <button class="btn btn--ghost btn--sm" data-nova-prova>+ Nova prova</button>
       </div>
       ${cards}
@@ -506,6 +525,8 @@ function renderListaProvas() {
 
   host.querySelectorAll("[data-editar]").forEach((b) =>
     b.addEventListener("click", () => abrirEditor(b.dataset.editar)));
+  const btnAtualizar = host.querySelector("[data-atualizar-seed]");
+  if (btnAtualizar) btnAtualizar.addEventListener("click", (evt) => carregarSeed(evt));
   const btnReset = host.querySelector("[data-reset-seed]");
   if (btnReset) {
     btnReset.addEventListener("click", (evt) => {

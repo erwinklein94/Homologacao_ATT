@@ -27,6 +27,7 @@ create table if not exists public.profiles (
 create table if not exists public.provas (
   id            uuid primary key default gen_random_uuid(),
   area          text not null default 'solda' check (area in ('solda', 'alivio_tensao')),
+  subarea       text check (subarea is null or subarea in ('alivio_termico', 'prospeccao_trilhos', 'operacao_verse', 'temperaturas_neutras')),
   codigo        text not null,
   titulo        text not null,
   descricao     text default '',
@@ -51,6 +52,7 @@ create table if not exists public.questoes (
 create table if not exists public.tentativas (
   id             uuid primary key default gen_random_uuid(),
   area           text not null default 'solda' check (area in ('solda', 'alivio_tensao')),
+  subarea        text check (subarea is null or subarea in ('alivio_termico', 'prospeccao_trilhos', 'operacao_verse', 'temperaturas_neutras')),
   aluno_id       uuid not null,
   aluno_nome     text not null default '',
   prova_id       uuid references public.provas (id) on delete set null,
@@ -69,7 +71,9 @@ create table if not exists public.tentativas (
 create index if not exists idx_profiles_area_role on public.profiles (area, role);
 create index if not exists idx_profiles_id_area on public.profiles (id, area);
 create index if not exists idx_provas_area_codigo on public.provas (area, codigo);
+create index if not exists idx_provas_area_subarea on public.provas (area, subarea);
 create index if not exists idx_questoes_prova on public.questoes (prova_id, ordem);
+create index if not exists idx_tentativas_area_subarea on public.tentativas (area, subarea, realizado_em desc);
 create index if not exists idx_tentativas_area_aluno on public.tentativas (area, aluno_id, realizado_em desc);
 create index if not exists idx_tentativas_area_data on public.tentativas (area, realizado_em);
 
