@@ -2,7 +2,12 @@
 -- Permitir primeiro acesso criado pelo próprio aluno
 -- Rode no Supabase > SQL Editor se o primeiro acesso criar a conta,
 -- mas aparecer erro de perfil/permission denied em public.profiles.
+-- Atualizado para salvar e-mail e empresa no perfil.
 -- =====================================================================
+
+alter table public.profiles add column if not exists email text;
+alter table public.profiles add column if not exists email_normalizado text;
+alter table public.profiles add column if not exists empresa text;
 
 grant usage on schema public to anon, authenticated;
 grant select, insert, update on public.profiles to authenticated;
@@ -47,15 +52,23 @@ begin
     area_informada := 'alivio_tensao';
   end if;
 
-  insert into public.profiles (id, nome, matricula, area, role)
+  insert into public.profiles (id, nome, matricula, email, email_normalizado, empresa, area, role)
   values (
     new.id,
     coalesce(nullif(new.raw_user_meta_data ->> 'nome', ''), split_part(new.email, '@', 1)),
     new.raw_user_meta_data ->> 'matricula',
+    new.email,
+    lower(trim(new.email)),
+    nullif(new.raw_user_meta_data ->> 'empresa', ''),
     area_informada,
     'aluno'
   )
-  on conflict (id, area) do nothing;
+  on conflict (id, area) do update set
+    nome = coalesce(nullif(excluded.nome, ''), public.profiles.nome),
+    matricula = coalesce(excluded.matricula, public.profiles.matricula),
+    email = coalesce(excluded.email, public.profiles.email),
+    email_normalizado = coalesce(excluded.email_normalizado, public.profiles.email_normalizado),
+    empresa = coalesce(excluded.empresa, public.profiles.empresa);
 
   return new;
 end;

@@ -68,6 +68,7 @@ serve(async (req) => {
     const area = body.area === "solda" ? "solda" : "alivio_tensao";
     const nome = limparTexto(body.nome);
     const matricula = limparTexto(body.matricula) || null;
+    const empresa = limparTexto(body.empresa) || null;
     const email = limparTexto(body.email);
     const emailNormalizado = normalizarEmail(email);
     const senha = typeof body.senha === "string" ? body.senha : "";
@@ -76,6 +77,9 @@ serve(async (req) => {
     if (!nome) return json({ ok: false, error: "Informe o nome do aluno." }, 400);
     if (!emailNormalizado || !emailNormalizado.includes("@")) {
       return json({ ok: false, error: "Informe um e-mail válido." }, 400);
+    }
+    if (!empresa) {
+      return json({ ok: false, error: "Informe a empresa do aluno." }, 400);
     }
     if (senha && senha.length < 6) {
       return json({ ok: false, error: "A senha precisa ter pelo menos 6 caracteres." }, 400);
@@ -109,7 +113,7 @@ serve(async (req) => {
         email: emailNormalizado,
         password: senha,
         email_confirm: true,
-        user_metadata: { nome, matricula, area },
+        user_metadata: { nome, matricula, empresa, area },
       });
 
       if (erroCriar || !novo?.user) {
@@ -125,6 +129,7 @@ serve(async (req) => {
           ...(usuarioExistente.user_metadata || {}),
           nome,
           matricula,
+          empresa,
           area,
         },
       };
@@ -145,14 +150,30 @@ serve(async (req) => {
 
     const userId = usuarioAuth.id;
 
+    const { data: perfilExistente, error: erroPerfilExistente } = await supabaseAdmin
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .eq("area", area)
+      .maybeSingle();
+
+    if (erroPerfilExistente) {
+      return json({ ok: false, error: "Usuário criado/atualizado no Auth, mas falhou ao consultar profile existente: " + erroPerfilExistente.message }, 500);
+    }
+
+    const roleFinal = perfilExistente?.role === "admin" ? "admin" : "aluno";
+
     const { error: erroProfile } = await supabaseAdmin
       .from("profiles")
       .upsert({
         id: userId,
         nome,
         matricula,
+        email: emailNormalizado,
+        email_normalizado: emailNormalizado,
+        empresa,
         area,
-        role: "aluno",
+        role: roleFinal,
       }, { onConflict: "id,area" });
 
     if (erroProfile) {
@@ -167,6 +188,7 @@ serve(async (req) => {
         matricula,
         email,
         email_normalizado: emailNormalizado,
+        empresa,
         ativo,
         criado_por: adminLogado.id,
         atualizado_em: new Date().toISOString(),

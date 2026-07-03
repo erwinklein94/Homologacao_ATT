@@ -6,7 +6,7 @@
   <title>Login · Homologações · Rumo</title>
   <meta name="description" content="Login por área para homologações Rumo." />
   <link rel="icon" href="assets/favicon.png" />
-  <link rel="stylesheet" href="css/rumo.css?v=20260703-primeiro-acesso-livre-v1" />
+  <link rel="stylesheet" href="css/rumo.css?v=20260703-cadastro-contas-v1" />
 </head>
 <body>
   <div class="login-shell">
@@ -107,6 +107,11 @@
                       <input id="cr-matricula" class="input" type="text" name="matricula" autocomplete="off" placeholder="Matrícula" />
                     </div>
                   </div>
+                  <div class="field">
+                    <label for="cr-empresa">Empresa</label>
+                    <input id="cr-empresa" class="input" type="text" name="empresa" autocomplete="organization" required placeholder="Ex.: Rumo, COTRIN, TRILL" />
+                    <div class="field__hint">Informe a empresa a que você pertence. Isso ajudará nos filtros futuros do painel.</div>
+                  </div>
                   <div class="row row--senha">
                     <div class="field">
                       <label for="cr-senha">Senha</label>
@@ -137,8 +142,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>if(!window.supabase){document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');}</script>
-  <script src="js/config.js?v=20260703-primeiro-acesso-livre-v1"></script>
-  <script src="js/app.js?v=20260703-primeiro-acesso-livre-v1"></script>
-  <script src="js/login.js?v=20260703-primeiro-acesso-livre-v1"></script>
+  <script src="js/config.js?v=20260703-cadastro-contas-v1"></script>
+  <script src="js/app.js?v=20260703-cadastro-contas-v1"></script>
+  <script src="js/login.js?v=20260703-cadastro-contas-v1"></script>
 </body>
 </html>

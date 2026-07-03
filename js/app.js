@@ -122,10 +122,14 @@ let _perfilCacheKey = null;
 
 function dadosPerfilPadrao(sessao, area, dados = {}) {
   const meta = sessao.user.user_metadata || {};
+  const email = (sessao.user.email || "").trim();
   return {
     id: sessao.user.id,
-    nome: (dados.nome || meta.nome || (sessao.user.email || "").split("@")[0] || "").trim(),
+    nome: (dados.nome || meta.nome || email.split("@")[0] || "").trim(),
     matricula: (dados.matricula || meta.matricula || null),
+    email,
+    email_normalizado: email.toLowerCase(),
+    empresa: (dados.empresa || meta.empresa || null),
     area,
     role: "aluno",
   };
@@ -143,7 +147,7 @@ async function garantirPerfilArea(areaPreferida = null, dados = {}) {
 
   let { data, error } = await sb
     .from("profiles")
-    .select("id, nome, matricula, role, area")
+    .select("id, nome, matricula, email, empresa, role, area")
     .eq("id", sessao.user.id)
     .eq("area", area)
     .maybeSingle();
@@ -164,7 +168,7 @@ async function garantirPerfilArea(areaPreferida = null, dados = {}) {
     const ins = await sb
       .from("profiles")
       .insert(novo)
-      .select("id, nome, matricula, role, area")
+      .select("id, nome, matricula, email, empresa, role, area")
       .single();
 
     if (ins.error) {
@@ -219,7 +223,7 @@ function montarCabecalho(perfil) {
   const linksAdmin = [
     ["dashboard.html", "Painel"],
     ["admin.html", "Dados &amp; provas"],
-    ["cadastro-alunos.html", "Cadastro de Alunos"],
+    ["cadastro-contas.html", "Cadastro de contas"],
   ];
   const linksAluno = [
     ["prova.html", "Fazer prova"],

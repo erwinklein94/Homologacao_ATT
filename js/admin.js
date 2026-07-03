@@ -103,8 +103,12 @@ function ligarAbas() {
 function renderAtividades() {
   const host = document.querySelector("[data-atividades]");
   const provasUnicas = [...new Set(adm.tentativas.map((t) => t.prova_titulo))].sort();
+  const empresasUnicas = [...new Set(adm.tentativas.map((t) => (t.empresa || "").trim()).filter(Boolean))].sort();
   const opcoesProva = ['<option value="">Todas as provas</option>']
     .concat(provasUnicas.map((p) => `<option value="${escaparHtml(p)}">${escaparHtml(p)}</option>`))
+    .join("");
+  const opcoesEmpresa = ['<option value="">Todas as empresas</option>']
+    .concat(empresasUnicas.map((e) => `<option value="${escaparHtml(e)}">${escaparHtml(e)}</option>`))
     .join("");
 
   host.innerHTML = `
@@ -117,6 +121,10 @@ function renderAtividades() {
         <div class="field" style="margin:0;min-width:220px">
           <label for="f-prova">Prova</label>
           <select id="f-prova" class="select" data-filtro-prova>${opcoesProva}</select>
+        </div>
+        <div class="field" style="margin:0;min-width:190px">
+          <label for="f-empresa">Empresa</label>
+          <select id="f-empresa" class="select" data-filtro-empresa>${opcoesEmpresa}</select>
         </div>
         <div class="field" style="margin:0;min-width:170px">
           <label for="f-result">Resultado</label>
@@ -133,19 +141,22 @@ function renderAtividades() {
   const aplicar = () => desenharTabelaAtividades(
     host.querySelector("[data-filtro-aluno]").value.trim().toLowerCase(),
     host.querySelector("[data-filtro-prova]").value,
+    host.querySelector("[data-filtro-empresa]").value,
     host.querySelector("[data-filtro-result]").value
   );
   host.querySelector("[data-filtro-aluno]").addEventListener("input", aplicar);
   host.querySelector("[data-filtro-prova]").addEventListener("change", aplicar);
+  host.querySelector("[data-filtro-empresa]").addEventListener("change", aplicar);
   host.querySelector("[data-filtro-result]").addEventListener("change", aplicar);
   aplicar();
 }
 
-function desenharTabelaAtividades(fAluno, fProva, fResult) {
+function desenharTabelaAtividades(fAluno, fProva, fEmpresa, fResult) {
   const host = document.querySelector("[data-tabela-atividades]");
   let linhas = adm.tentativas.filter((t) => {
     if (fAluno && !(t.aluno_nome || "").toLowerCase().includes(fAluno)) return false;
     if (fProva && t.prova_titulo !== fProva) return false;
+    if (fEmpresa && (t.empresa || "") !== fEmpresa) return false;
     if (fResult === "ok" && !t.aprovado) return false;
     if (fResult === "reprov" && t.aprovado) return false;
     return true;
@@ -163,6 +174,7 @@ function desenharTabelaAtividades(fAluno, fProva, fResult) {
     return `<tr>
       <td>${escaparHtml(t.aluno_nome)}</td>
       <td>${escaparHtml(t.prova_titulo)}</td>
+      <td>${escaparHtml(t.empresa || "—")}</td>
       <td><b>${fmtNota(t.nota)}</b> <span class="muted small">(${t.acertos}/${t.total})</span></td>
       <td>${badge}</td>
       <td>${escaparHtml(t.instrutor_nome)}</td>
@@ -175,7 +187,7 @@ function desenharTabelaAtividades(fAluno, fProva, fResult) {
     <div class="tabela-wrap">
       <table class="tabela">
         <thead><tr>
-          <th>Aluno</th><th>Prova</th><th>Nota</th><th>Resultado</th><th>Instrutor</th><th>Data</th>
+          <th>Aluno</th><th>Prova</th><th>Empresa</th><th>Nota</th><th>Resultado</th><th>Instrutor</th><th>Data</th>
         </tr></thead>
         <tbody>${corpo}</tbody>
       </table>
@@ -207,8 +219,8 @@ function tentativaParaHistorico(t) {
     gerencia: "—",
     participante: t.aluno_nome || "—",
     funcao: "—",
-    matricula: "—",
-    empresa: "—",
+    matricula: t.aluno_matricula || "—",
+    empresa: t.empresa || "—",
     nota: (t.nota === null || t.nota === undefined) ? null : Number(t.nota),
     aprovacao: t.aprovado ? "APROVADO" : "REPROVADO",
     instrutor: t.instrutor_nome || "—",

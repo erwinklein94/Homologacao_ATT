@@ -1,5 +1,5 @@
 -- =====================================================================
--- Cadastro de Alunos — Homologação Alívio de Tensão
+-- Cadastro de Contas — Homologação Alívio de Tensão
 -- Rode este arquivo no Supabase > SQL Editor depois de subir o código.
 --
 -- Objetivo:
@@ -13,6 +13,7 @@ create table if not exists public.alunos_cadastrados (
   area               text not null default 'alivio_tensao' check (area in ('solda', 'alivio_tensao')),
   nome               text not null default '',
   matricula          text,
+  empresa            text,
   email              text not null,
   email_normalizado  text not null,
   ativo              boolean not null default true,
@@ -21,6 +22,13 @@ create table if not exists public.alunos_cadastrados (
   atualizado_em      timestamptz not null default now(),
   unique (area, email_normalizado)
 );
+
+alter table public.alunos_cadastrados add column if not exists empresa text;
+alter table public.profiles add column if not exists email text;
+alter table public.profiles add column if not exists email_normalizado text;
+alter table public.profiles add column if not exists empresa text;
+alter table public.tentativas add column if not exists aluno_matricula text;
+alter table public.tentativas add column if not exists empresa text;
 
 create index if not exists idx_alunos_cadastrados_area
   on public.alunos_cadastrados (area, ativo, nome);
@@ -58,6 +66,7 @@ returns table (
   email text,
   nome text,
   matricula text,
+  empresa text,
   area text,
   ativo boolean
 )
@@ -70,6 +79,7 @@ as $$
     c.email,
     c.nome,
     c.matricula,
+    c.empresa,
     c.area,
     c.ativo
   from public.alunos_cadastrados c
@@ -80,6 +90,13 @@ as $$
 $$;
 
 -- Permissões básicas.
+update public.profiles p
+set email = coalesce(nullif(p.email, ''), u.email),
+    email_normalizado = lower(trim(coalesce(nullif(p.email, ''), u.email)))
+from auth.users u
+where p.id = u.id
+  and (p.email is null or p.email = '' or p.email_normalizado is null or p.email_normalizado = '');
+
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.alunos_cadastrados to authenticated;
 grant execute on function public.buscar_aluno_cadastrado(text, text) to anon, authenticated;

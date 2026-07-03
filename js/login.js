@@ -159,9 +159,10 @@ function ligarFormAlunoCriar(areaLogin) {
           return;
         }
         if (data) {
-          preview.textContent = `Cadastro encontrado: ${data.nome || email}${data.matricula ? " · " + data.matricula : ""}`;
+          preview.textContent = `Cadastro encontrado: ${data.nome || email}${data.matricula ? " · " + data.matricula : ""}${data.empresa ? " · " + data.empresa : ""}`;
           if (f.elements.nome && !f.elements.nome.value && data.nome) f.elements.nome.value = data.nome;
           if (f.elements.matricula && !f.elements.matricula.value && data.matricula) f.elements.matricula.value = data.matricula;
+          if (f.elements.empresa && !f.elements.empresa.value && data.empresa) f.elements.empresa.value = data.empresa;
         } else {
           preview.textContent = "E-mail novo: você pode criar o primeiro acesso como aluno desta área.";
         }
@@ -174,6 +175,9 @@ function ligarFormAlunoCriar(areaLogin) {
     msg("[data-msg-aluno-criar]", null);
     if (f.senha.value.length < 6) {
       return msg("[data-msg-aluno-criar]", "erro", "A senha precisa ter ao menos 6 caracteres.");
+    }
+    if (!String(f.elements.empresa?.value || "").trim()) {
+      return msg("[data-msg-aluno-criar]", "erro", "Informe a empresa a que você pertence.");
     }
     if (f.senha.value !== f.senha2.value) {
       return msg("[data-msg-aluno-criar]", "erro", "As senhas não conferem.");
@@ -191,16 +195,18 @@ function ligarFormAlunoCriar(areaLogin) {
 
     const nomeDigitado = (f.elements.nome?.value || "").trim();
     const matriculaDigitada = (f.elements.matricula?.value || "").trim();
+    const empresaDigitada = (f.elements.empresa?.value || "").trim();
     const dadosPerfil = {
       nome: cadastro.data?.nome || nomeDigitado || email.split("@")[0],
       matricula: cadastro.data?.matricula || matriculaDigitada || null,
+      empresa: cadastro.data?.empresa || empresaDigitada || null,
       criarSeNaoExistir: true,
     };
 
     const { data, error } = await sb.auth.signUp({
       email,
       password: f.senha.value,
-      options: { data: { nome: dadosPerfil.nome, matricula: dadosPerfil.matricula, area: areaLogin } },
+      options: { data: { nome: dadosPerfil.nome, matricula: dadosPerfil.matricula, empresa: dadosPerfil.empresa, area: areaLogin } },
     });
 
     if (error) {

@@ -115,6 +115,10 @@ function renderInicio() {
           <input class="input" value="${escaparHtml(estado.perfil.matricula || "—")}" disabled />
         </div>
       </div>
+      <div class="field">
+        <label>Empresa</label>
+        <input class="input" value="${escaparHtml(estado.perfil.empresa || "—")}" disabled />
+      </div>
 
       <div class="field">
         <label for="sel-instrutor">Instrutor que aplica a prova</label>
@@ -278,6 +282,8 @@ async function enviarProva() {
     aluno_id: estado.perfil.id,
     area: estado.perfil.area,
     aluno_nome: estado.perfil.nome || estado.perfil.email,
+    aluno_matricula: estado.perfil.matricula || null,
+    empresa: estado.perfil.empresa || null,
     prova_id: estado.prova.id,
     prova_titulo: estado.prova.titulo,
     instrutor_id: estado.instrutorId || null,

@@ -30,7 +30,7 @@ function renderResumo(perfil, tentativas) {
       <div class="eyebrow">Meu perfil</div>
       <h1>${escaparHtml(perfil.nome || perfil.email)}</h1>
       <p class="muted">
-        ${perfil.matricula ? "Matrícula " + escaparHtml(perfil.matricula) + " · " : ""}${escaparHtml(perfil.email)}
+        ${perfil.matricula ? "Matrícula " + escaparHtml(perfil.matricula) + " · " : ""}${perfil.empresa ? "Empresa " + escaparHtml(perfil.empresa) + " · " : ""}${escaparHtml(perfil.email)}
       </p>
     </div>
     <div class="kpis">

@@ -18,11 +18,18 @@ create table if not exists public.profiles (
   id          uuid not null references auth.users (id) on delete cascade,
   nome        text not null default '',
   matricula   text,
+  email       text,
+  email_normalizado text,
+  empresa     text,
   area        text not null default 'solda' check (area in ('solda', 'alivio_tensao')),
   role        text not null default 'aluno' check (role in ('aluno', 'admin')),
   criado_em   timestamptz not null default now(),
   primary key (id, area)
 );
+
+alter table public.profiles add column if not exists email text;
+alter table public.profiles add column if not exists email_normalizado text;
+alter table public.profiles add column if not exists empresa text;
 
 create table if not exists public.provas (
   id            uuid primary key default gen_random_uuid(),
@@ -55,6 +62,8 @@ create table if not exists public.tentativas (
   subarea        text check (subarea is null or subarea in ('alivio_termico', 'prospeccao_trilhos', 'operacao_verse', 'temperaturas_neutras')),
   aluno_id       uuid not null,
   aluno_nome     text not null default '',
+  aluno_matricula text,
+  empresa        text,
   prova_id       uuid references public.provas (id) on delete set null,
   prova_titulo   text not null default '',
   instrutor_id   uuid,
@@ -68,8 +77,13 @@ create table if not exists public.tentativas (
   foreign key (aluno_id, area) references public.profiles (id, area) on delete cascade
 );
 
+alter table public.tentativas add column if not exists aluno_matricula text;
+alter table public.tentativas add column if not exists empresa text;
+
 create index if not exists idx_profiles_area_role on public.profiles (area, role);
 create index if not exists idx_profiles_id_area on public.profiles (id, area);
+create index if not exists idx_profiles_area_email on public.profiles (area, email_normalizado);
+create index if not exists idx_profiles_area_empresa on public.profiles (area, empresa);
 create index if not exists idx_provas_area_codigo on public.provas (area, codigo);
 create index if not exists idx_provas_area_subarea on public.provas (area, subarea);
 create index if not exists idx_questoes_prova on public.questoes (prova_id, ordem);
@@ -162,11 +176,14 @@ begin
     area_informada := 'solda';
   end if;
 
-  insert into public.profiles (id, nome, matricula, area, role)
+  insert into public.profiles (id, nome, matricula, email, email_normalizado, empresa, area, role)
   values (
     new.id,
     coalesce(nullif(new.raw_user_meta_data ->> 'nome', ''), split_part(new.email, '@', 1)),
     new.raw_user_meta_data ->> 'matricula',
+    new.email,
+    lower(trim(new.email)),
+    nullif(new.raw_user_meta_data ->> 'empresa', ''),
     area_informada,
     'aluno'
   )
@@ -292,6 +309,7 @@ create table if not exists public.alunos_cadastrados (
   area               text not null default 'alivio_tensao' check (area in ('solda', 'alivio_tensao')),
   nome               text not null default '',
   matricula          text,
+  empresa            text,
   email              text not null,
   email_normalizado  text not null,
   ativo              boolean not null default true,
@@ -300,6 +318,8 @@ create table if not exists public.alunos_cadastrados (
   atualizado_em      timestamptz not null default now(),
   unique (area, email_normalizado)
 );
+
+alter table public.alunos_cadastrados add column if not exists empresa text;
 
 create index if not exists idx_alunos_cadastrados_area
   on public.alunos_cadastrados (area, ativo, nome);
@@ -333,6 +353,7 @@ returns table (
   email text,
   nome text,
   matricula text,
+  empresa text,
   area text,
   ativo boolean
 )
@@ -341,13 +362,22 @@ security definer
 set search_path = public
 stable
 as $$
-  select c.email, c.nome, c.matricula, c.area, c.ativo
+  select c.email, c.nome, c.matricula, c.empresa, c.area, c.ativo
   from public.alunos_cadastrados c
   where c.area = p_area
     and c.email_normalizado = lower(trim(p_email))
     and c.ativo = true
   limit 1
 $$;
+
+-- Preenche e-mail em perfis antigos para a tela Cadastro de contas.
+-- Esta atualização funciona no SQL Editor, que tem acesso a auth.users.
+update public.profiles p
+set email = coalesce(nullif(p.email, ''), u.email),
+    email_normalizado = lower(trim(coalesce(nullif(p.email, ''), u.email)))
+from auth.users u
+where p.id = u.id
+  and (p.email is null or p.email = '' or p.email_normalizado is null or p.email_normalizado = '');
 
 grant usage on schema public to anon, authenticated;
 
