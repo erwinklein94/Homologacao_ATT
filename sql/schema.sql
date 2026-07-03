@@ -346,6 +346,13 @@ as $$
 $$;
 
 grant usage on schema public to anon, authenticated;
+
+-- Permissões diretas necessárias para o site ler/criar o perfil do aluno.
+-- O RLS abaixo continua protegendo quem pode ver/alterar cada linha.
+grant select, insert, update on public.profiles to authenticated;
+grant select, insert, update, delete on public.provas to authenticated;
+grant select, insert, update, delete on public.questoes to authenticated;
+grant select, insert, update, delete on public.tentativas to authenticated;
 grant select, insert, update, delete on public.alunos_cadastrados to authenticated;
 grant execute on function public.buscar_aluno_cadastrado(text, text) to anon, authenticated;
 

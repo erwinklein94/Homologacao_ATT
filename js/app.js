@@ -150,10 +150,10 @@ async function garantirPerfilArea(areaPreferida = null, dados = {}) {
 
   if (error) { console.error("Erro ao carregar perfil:", error.message); return null; }
 
-  // A criação automática de perfil agora só acontece quando o fluxo de
-  // "Primeiro acesso" informa explicitamente que o aluno foi autorizado
-  // pelo cadastro feito pelo administrador. Isso evita que qualquer conta
-  // existente no Auth vire aluno só por tentar entrar no site.
+  // A criação automática de perfil só acontece quando o fluxo de
+  // "Primeiro acesso" informa explicitamente que deve criar o aluno.
+  // Assim o aluno pode criar o primeiro acesso, mas uma tentativa comum
+  // de login não cria perfil novo sozinha.
   if (!data) {
     if (!dados || dados.criarSeNaoExistir !== true) {
       return null;

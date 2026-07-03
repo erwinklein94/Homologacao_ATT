@@ -6,7 +6,7 @@
   <title>Login · Homologações · Rumo</title>
   <meta name="description" content="Login por área para homologações Rumo." />
   <link rel="icon" href="assets/favicon.png" />
-  <link rel="stylesheet" href="css/rumo.css?v=20260625-login-rumo-v3" />
+  <link rel="stylesheet" href="css/rumo.css?v=20260703-primeiro-acesso-livre-v1" />
 </head>
 <body>
   <div class="login-shell">
@@ -58,7 +58,7 @@
                 <div class="login-card__icon" aria-hidden="true">👷</div>
                 <div>
                   <h2 data-label-aluno>Aluno</h2>
-                  <p class="muted">Entre com a senha definida pelo administrador ou faça o primeiro acesso quando solicitado.</p>
+                  <p class="muted">Entre com sua senha ou crie seu primeiro acesso usando seu e-mail.</p>
                 </div>
               </div>
 
@@ -90,12 +90,22 @@
               <div data-painel="criar" class="hidden">
                 <form data-form-aluno-criar method="post" novalidate>
                   <div class="alerta alerta--info" style="margin-bottom:1rem">
-                    Use esta opção apenas quando o administrador cadastrou seu e-mail sem definir senha inicial. Se ele já informou uma senha, volte para a aba “Entrar”.
+                    Use esta opção quando você ainda não tem acesso. Se o administrador já cadastrou seu e-mail, o sistema aproveita esse cadastro; se ainda não cadastrou, você cria seu próprio primeiro acesso como aluno desta área.
                   </div>
                   <div class="field">
-                    <label for="cr-email">E-mail cadastrado</label>
+                    <label for="cr-email">E-mail</label>
                     <input id="cr-email" class="input" type="email" name="email" autocomplete="username" required placeholder="seu@email.com" />
-                    <div class="field__hint" data-cadastro-preview>Digite o e-mail informado ao administrador.</div>
+                    <div class="field__hint" data-cadastro-preview>Digite o e-mail que será usado no acesso.</div>
+                  </div>
+                  <div class="row row--senha">
+                    <div class="field">
+                      <label for="cr-nome">Nome completo</label>
+                      <input id="cr-nome" class="input" type="text" name="nome" autocomplete="name" placeholder="Seu nome" />
+                    </div>
+                    <div class="field">
+                      <label for="cr-matricula">Matrícula <span class="muted">(opcional)</span></label>
+                      <input id="cr-matricula" class="input" type="text" name="matricula" autocomplete="off" placeholder="Matrícula" />
+                    </div>
                   </div>
                   <div class="row row--senha">
                     <div class="field">
@@ -127,8 +137,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>if(!window.supabase){document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');}</script>
-  <script src="js/config.js?v=20260625-login-rumo-v3"></script>
-  <script src="js/app.js?v=20260625-login-rumo-v3"></script>
-  <script src="js/login.js?v=20260625-login-rumo-v3"></script>
+  <script src="js/config.js?v=20260703-primeiro-acesso-livre-v1"></script>
+  <script src="js/app.js?v=20260703-primeiro-acesso-livre-v1"></script>
+  <script src="js/login.js?v=20260703-primeiro-acesso-livre-v1"></script>
 </body>
 </html>
