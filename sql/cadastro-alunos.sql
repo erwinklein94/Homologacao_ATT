@@ -4,8 +4,8 @@
 --
 -- Objetivo:
 -- 1) Administrador cadastra alunos autorizados em public.alunos_cadastrados.
--- 2) Aluno só consegue fazer "Primeiro acesso" se o e-mail estiver ativo aqui.
--- 3) O aluno cria a própria senha; a senha NÃO fica salva nesta tabela.
+-- 2) A tela de cadastro chama a Edge Function admin-criar-aluno para criar o usuário no Auth.
+-- 3) A senha NÃO fica salva nesta tabela; ela é enviada apenas ao Supabase Auth.
 -- =====================================================================
 
 create table if not exists public.alunos_cadastrados (

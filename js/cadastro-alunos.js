@@ -1,7 +1,8 @@
 // =====================================================================
 // cadastro-alunos.js — cadastro administrativo de alunos autorizados
-// O administrador pré-cadastra nome, matrícula e e-mail no Supabase.
-// Depois o aluno usa "Primeiro acesso" para criar a própria senha.
+// O administrador cadastra nome, matrícula, e-mail e senha inicial.
+// A senha é usada apenas para criar/atualizar o usuário no Supabase Auth;
+// ela NÃO fica salva na tabela public.alunos_cadastrados.
 // =====================================================================
 
 const cad = {
@@ -51,7 +52,11 @@ function renderCadastroAlunos() {
       <div>
         <h2 style="margin-bottom:.25rem" data-form-titulo>Novo aluno</h2>
         <p class="muted" style="margin:0">
-          Este cadastro libera o e-mail para o primeiro acesso. A senha continua sendo criada pelo próprio aluno na tela de login.
+          Cadastre o aluno e defina uma senha inicial. Depois ele já poderá entrar pela aba <b>Entrar como aluno</b> usando esse e-mail e senha.
+        </p>
+        <p class="muted small" style="margin:.35rem 0 0">
+          A senha é enviada ao Supabase Auth e não fica salva na tabela de cadastro.
+          Para isso funcionar, publique a Edge Function <code>admin-criar-aluno</code> incluída neste projeto.
         </p>
       </div>
 
@@ -70,6 +75,7 @@ function renderCadastroAlunos() {
           <div class="field" style="flex:2;min-width:240px">
             <label for="cad-email">E-mail</label>
             <input id="cad-email" class="input" type="email" name="email" required placeholder="aluno@rumolog.com" />
+            <div class="field__hint" data-hint-email></div>
           </div>
           <div class="field" style="min-width:160px">
             <label for="cad-status">Status</label>
@@ -79,8 +85,19 @@ function renderCadastroAlunos() {
             </select>
           </div>
         </div>
+        <div class="row">
+          <div class="field" style="flex:1;min-width:220px">
+            <label for="cad-senha">Senha inicial</label>
+            <input id="cad-senha" class="input" type="password" name="senha" autocomplete="new-password" placeholder="Mínimo 6 caracteres" />
+            <div class="field__hint" data-hint-senha>Obrigatória para novo aluno. Em edição, preencha apenas se quiser trocar a senha.</div>
+          </div>
+          <div class="field" style="flex:1;min-width:220px">
+            <label for="cad-senha2">Confirmar senha</label>
+            <input id="cad-senha2" class="input" type="password" name="senha2" autocomplete="new-password" placeholder="Repita a senha" />
+          </div>
+        </div>
         <div class="toolbar">
-          <button class="btn btn--success" type="submit" data-btn-salvar>Salvar aluno</button>
+          <button class="btn btn--success" type="submit" data-btn-salvar>Salvar aluno e criar acesso</button>
           <button class="btn btn--ghost hidden" type="button" data-btn-cancelar>Cancelar edição</button>
           <span class="spacer"></span>
           <span class="muted small" data-status-form></span>
@@ -180,42 +197,67 @@ async function salvarAluno(e) {
   const email = form.email.value.trim();
   const emailNormalizado = normalizarEmail(email);
   const ativo = form.ativo.value === "true";
+  const senha = form.senha.value || "";
+  const senha2 = form.senha2.value || "";
+  const editando = Boolean(cad.editandoId);
 
   if (!nome) { status.textContent = "Informe o nome do aluno."; form.nome.focus(); return; }
   if (!emailNormalizado || !emailNormalizado.includes("@")) { status.textContent = "Informe um e-mail válido."; form.email.focus(); return; }
+  if (!editando && senha.length < 6) { status.textContent = "Informe uma senha inicial com pelo menos 6 caracteres."; form.senha.focus(); return; }
+  if (senha && senha.length < 6) { status.textContent = "A senha precisa ter pelo menos 6 caracteres."; form.senha.focus(); return; }
+  if (senha !== senha2) { status.textContent = "As senhas não conferem."; form.senha2.focus(); return; }
 
-  travarBtn(btn, true, "Salvando…");
+  travarBtn(btn, true, editando ? "Salvando…" : "Criando acesso…");
   status.textContent = "";
 
-  const registro = {
+  const payload = {
     area: cad.perfil.area,
     nome,
     matricula,
     email,
-    email_normalizado: emailNormalizado,
+    senha: senha || null,
     ativo,
-    atualizado_em: new Date().toISOString(),
   };
 
-  let error;
-  if (cad.editandoId) {
-    ({ error } = await sb.from("alunos_cadastrados").update(registro).eq("id", cad.editandoId));
-  } else {
-    registro.criado_por = cad.perfil.id;
-    ({ error } = await sb
-      .from("alunos_cadastrados")
-      .upsert(registro, { onConflict: "area,email_normalizado" }));
-  }
-
-  if (error) {
-    console.error(error);
-    status.textContent = "Erro ao salvar: " + (error.message || error);
-    travarBtn(btn, false, cad.editandoId ? "Salvar edição" : "Salvar aluno");
+  const resposta = await chamarFuncaoAdminCriarAluno(payload);
+  if (resposta.error) {
+    console.error(resposta.error);
+    status.textContent = resposta.error;
+    travarBtn(btn, false, editando ? "Salvar edição" : "Salvar aluno e criar acesso");
     return;
   }
 
   await carregarAlunos();
   renderCadastroAlunos();
+}
+
+async function chamarFuncaoAdminCriarAluno(payload) {
+  try {
+    const { data, error } = await sb.functions.invoke("admin-criar-aluno", { body: payload });
+
+    if (error) {
+      let detalhe = error.message || "Erro ao chamar a função admin-criar-aluno.";
+      if (error.context && typeof error.context.json === "function") {
+        try {
+          const corpo = await error.context.json();
+          detalhe = corpo?.error || corpo?.message || detalhe;
+        } catch (_) { /* ignora */ }
+      }
+      return { error: detalhe };
+    }
+
+    if (!data || data.ok !== true) {
+      return { error: data?.error || "A função admin-criar-aluno não confirmou o cadastro." };
+    }
+
+    return { data };
+  } catch (err) {
+    return {
+      error:
+        "Não consegui criar o acesso no Supabase Auth. Confira se a Edge Function admin-criar-aluno foi publicada no Supabase. Detalhe: " +
+        (err?.message || String(err)),
+    };
+  }
 }
 
 function preencherFormulario(id) {
@@ -228,7 +270,12 @@ function preencherFormulario(id) {
   form.nome.value = aluno.nome || "";
   form.matricula.value = aluno.matricula || "";
   form.email.value = aluno.email || "";
+  form.email.readOnly = true;
+  form.senha.value = "";
+  form.senha2.value = "";
   form.ativo.value = aluno.ativo ? "true" : "false";
+  host.querySelector("[data-hint-email]").textContent = "Para trocar o e-mail, exclua este cadastro e crie outro.";
+  host.querySelector("[data-hint-senha]").textContent = "Deixe em branco para manter a senha atual. Preencha para redefinir.";
   host.querySelector("[data-btn-salvar]").textContent = "Salvar edição";
   host.querySelector("[data-btn-cancelar]").classList.remove("hidden");
   form.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -239,16 +286,19 @@ function limparFormulario() {
   const host = document.querySelector("[data-cadastro-alunos]");
   const form = host.querySelector("[data-form-cadastro-aluno]");
   form.reset();
+  form.email.readOnly = false;
   host.querySelector("[data-form-titulo]").textContent = "Novo aluno";
-  host.querySelector("[data-btn-salvar]").textContent = "Salvar aluno";
+  host.querySelector("[data-btn-salvar]").textContent = "Salvar aluno e criar acesso";
   host.querySelector("[data-btn-cancelar]").classList.add("hidden");
   host.querySelector("[data-status-form]").textContent = "";
+  host.querySelector("[data-hint-email]").textContent = "";
+  host.querySelector("[data-hint-senha]").textContent = "Obrigatória para novo aluno. Em edição, preencha apenas se quiser trocar a senha.";
 }
 
 async function excluirAluno(id) {
   const aluno = cad.alunos.find((a) => a.id === id);
   if (!aluno) return;
-  const ok = confirm(`Excluir o cadastro de ${aluno.nome}? Se ele já criou acesso, o login existente não será apagado; isso apenas remove a autorização de primeiro acesso.`);
+  const ok = confirm(`Excluir o cadastro de ${aluno.nome}? Se ele já criou acesso, o usuário do Supabase Auth não será apagado; isso apenas remove o registro da lista de alunos autorizados.`);
   if (!ok) return;
   const { error } = await sb.from("alunos_cadastrados").delete().eq("id", id);
   if (error) { alert("Erro ao excluir: " + error.message); return; }
