@@ -22,7 +22,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 async function carregarAlunos() {
   const { data, error } = await sb
     .from("alunos_cadastrados")
-    .select("id, area, nome, matricula, email, email_normalizado, ativo, criado_em, atualizado_em")
+    .select("id, area, nome, matricula, email, email_normalizado, ativo, criado_por, criado_em, atualizado_em")
     .eq("area", cad.perfil.area)
     .order("nome", { ascending: true });
 
@@ -35,10 +35,18 @@ async function carregarAlunos() {
   return { error: null };
 }
 
+// Pendente = criou o próprio primeiro acesso (sem passar pelo admin) e
+// ainda não foi aprovado. Distingue-se de um aluno que o admin desativou
+// manualmente porque nesse caso "criado_por" já foi preenchido.
+function ehPendente(aluno) {
+  return !aluno.ativo && !aluno.criado_por;
+}
+
 function renderCadastroAlunos() {
   const host = document.querySelector("[data-cadastro-alunos]");
   const total = cad.alunos.length;
   const ativos = cad.alunos.filter((a) => a.ativo).length;
+  const pendentes = cad.alunos.filter(ehPendente);
   const inativos = total - ativos;
 
   host.innerHTML = `
@@ -46,6 +54,18 @@ function renderCadastroAlunos() {
       <div class="kpi"><div class="kpi__label">Alunos cadastrados</div><div class="kpi__value">${total}</div></div>
       <div class="kpi kpi--verde"><div class="kpi__label">Ativos</div><div class="kpi__value">${ativos}</div></div>
       <div class="kpi"><div class="kpi__label">Inativos</div><div class="kpi__value">${inativos}</div></div>
+      <div class="kpi kpi--laranja"><div class="kpi__label">Pendentes de aprovação</div><div class="kpi__value">${pendentes.length}</div></div>
+    </div>
+
+    <div class="card card--chanfro stack" style="margin-bottom:1.2rem">
+      <div class="toolbar">
+        <h2 style="margin:0">Aprovações pendentes</h2>
+        <span class="badge badge--aviso badge--dot">${pendentes.length} aguardando</span>
+      </div>
+      <p class="muted" style="margin:0">
+        Alunos que criaram o próprio primeiro acesso pelo login, sem cadastro prévio. Aprove para liberar as provas ou recuse para manter bloqueado.
+      </p>
+      <div data-tabela-pendentes></div>
     </div>
 
     <div class="card card--chanfro stack" style="margin-bottom:1.2rem">
@@ -126,6 +146,8 @@ function renderCadastroAlunos() {
       <div data-tabela-alunos></div>
     </div>`;
 
+  desenharTabelaPendentes(pendentes);
+
   const form = host.querySelector("[data-form-cadastro-aluno]");
   form.addEventListener("submit", salvarAluno);
   host.querySelector("[data-btn-cancelar]").addEventListener("click", limparFormulario);
@@ -137,6 +159,71 @@ function renderCadastroAlunos() {
   host.querySelector("[data-busca-aluno]").addEventListener("input", aplicar);
   host.querySelector("[data-filtro-status]").addEventListener("change", aplicar);
   aplicar();
+}
+
+function desenharTabelaPendentes(pendentes) {
+  const host = document.querySelector("[data-tabela-pendentes]");
+  if (!host) return;
+
+  if (pendentes.length === 0) {
+    host.innerHTML = `<p class="muted center" style="padding:1rem 0">Nenhum pedido de primeiro acesso aguardando aprovação.</p>`;
+    return;
+  }
+
+  const corpo = pendentes.map((a) => `<tr>
+      <td><b>${escaparHtml(a.nome || "—")}</b></td>
+      <td class="nowrap">${escaparHtml(a.matricula || "—")}</td>
+      <td>${escaparHtml(a.email || "—")}</td>
+      <td class="nowrap">${fmtData(a.criado_em)}</td>
+      <td class="nowrap">
+        <button class="btn btn--success btn--sm" data-aprovar-aluno="${a.id}">Aprovar</button>
+        <button class="btn btn--danger btn--sm" data-recusar-aluno="${a.id}">Recusar</button>
+      </td>
+    </tr>`).join("");
+
+  host.innerHTML = `
+    <div class="tabela-wrap">
+      <table class="tabela">
+        <thead><tr>
+          <th>Aluno</th><th>Matrícula</th><th>E-mail</th><th>Solicitado em</th><th>Ações</th>
+        </tr></thead>
+        <tbody>${corpo}</tbody>
+      </table>
+    </div>`;
+
+  host.querySelectorAll("[data-aprovar-aluno]").forEach((b) =>
+    b.addEventListener("click", () => aprovarAluno(b.dataset.aprovarAluno)));
+  host.querySelectorAll("[data-recusar-aluno]").forEach((b) =>
+    b.addEventListener("click", () => recusarAluno(b.dataset.recusarAluno)));
+}
+
+async function aprovarAluno(id) {
+  const aluno = cad.alunos.find((a) => a.id === id);
+  if (!aluno) return;
+  const { error } = await sb
+    .from("alunos_cadastrados")
+    .update({ ativo: true })
+    .eq("id", id);
+  if (error) { alert("Erro ao aprovar: " + error.message); return; }
+  await carregarAlunos();
+  renderCadastroAlunos();
+}
+
+async function recusarAluno(id) {
+  const aluno = cad.alunos.find((a) => a.id === id);
+  if (!aluno) return;
+  const ok = confirm(`Recusar o pedido de primeiro acesso de ${aluno.nome || aluno.email}? Ele continua Inativo (bloqueado para provas) e some da lista de pendentes; se mudar de ideia, reative em "Lista de alunos".`);
+  if (!ok) return;
+  // NÃO apaga o registro: sem ele, corrigir_prova não encontra o e-mail e
+  // deixa de bloquear a prova. Em vez disso, marca como revisado (fica
+  // Inativo normal, editável na lista, e sai da fila de pendentes).
+  const { error } = await sb
+    .from("alunos_cadastrados")
+    .update({ criado_por: cad.perfil.id })
+    .eq("id", id);
+  if (error) { alert("Erro ao recusar: " + error.message); return; }
+  await carregarAlunos();
+  renderCadastroAlunos();
 }
 
 function desenharTabelaAlunos(busca, filtroStatus) {
@@ -155,19 +242,26 @@ function desenharTabelaAlunos(busca, filtroStatus) {
   }
 
   const corpo = linhas.map((a) => {
+    const pendente = ehPendente(a);
     const badge = a.ativo
       ? '<span class="badge badge--ok badge--dot">Ativo</span>'
-      : '<span class="badge badge--erro badge--dot">Inativo</span>';
+      : pendente
+        ? '<span class="badge badge--aviso badge--dot">Pendente</span>'
+        : '<span class="badge badge--erro badge--dot">Inativo</span>';
+    // Pendente não usa "Excluir" aqui: apagar o registro removeria o
+    // bloqueio de corrigir_prova e liberaria a prova sem aprovação.
+    const acoes = pendente
+      ? `<button class="btn btn--success btn--sm" data-aprovar-aluno="${a.id}">Aprovar</button>
+         <button class="btn btn--ghost btn--sm" data-recusar-aluno="${a.id}">Recusar</button>`
+      : `<button class="btn btn--ghost btn--sm" data-editar-aluno="${a.id}">Editar</button>
+         <button class="btn btn--danger btn--sm" data-excluir-aluno="${a.id}">Excluir</button>`;
     return `<tr>
       <td><b>${escaparHtml(a.nome || "—")}</b></td>
       <td class="nowrap">${escaparHtml(a.matricula || "—")}</td>
       <td>${escaparHtml(a.email || "—")}</td>
       <td>${badge}</td>
       <td class="nowrap">${fmtData(a.criado_em)}</td>
-      <td class="nowrap">
-        <button class="btn btn--ghost btn--sm" data-editar-aluno="${a.id}">Editar</button>
-        <button class="btn btn--danger btn--sm" data-excluir-aluno="${a.id}">Excluir</button>
-      </td>
+      <td class="nowrap">${acoes}</td>
     </tr>`;
   }).join("");
 
@@ -186,6 +280,10 @@ function desenharTabelaAlunos(busca, filtroStatus) {
     b.addEventListener("click", () => preencherFormulario(b.dataset.editarAluno)));
   host.querySelectorAll("[data-excluir-aluno]").forEach((b) =>
     b.addEventListener("click", () => excluirAluno(b.dataset.excluirAluno)));
+  host.querySelectorAll("[data-aprovar-aluno]").forEach((b) =>
+    b.addEventListener("click", () => aprovarAluno(b.dataset.aprovarAluno)));
+  host.querySelectorAll("[data-recusar-aluno]").forEach((b) =>
+    b.addEventListener("click", () => recusarAluno(b.dataset.recusarAluno)));
 }
 
 async function salvarAluno(e) {

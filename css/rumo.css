@@ -255,8 +255,9 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
   display: inline-flex; align-items: center; gap: .35rem; font-size: .76rem; font-weight: 700;
   padding: .2rem .55rem; border-radius: 999px; white-space: nowrap;
 }
-.badge--ok   { background: #e3f4ec; color: #0c5c46; }
-.badge--erro { background: #fdeaea; color: #9a2a2d; }
+.badge--ok    { background: #e3f4ec; color: #0c5c46; }
+.badge--erro  { background: #fdeaea; color: #9a2a2d; }
+.badge--aviso { background: #fdf0e6; color: #9a5b13; }
 .badge--dot::before { content: ""; width: .5rem; height: .5rem; border-radius: 50%; background: currentColor; }
 
 /* =====================================================================
@@ -356,6 +357,7 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
 .kpi__value { font-size: 2.1rem; font-weight: 800; color: var(--rumo-azul); line-height: 1.1; margin-top: .25rem; position: relative; z-index: 1; }
 .kpi__sub { font-size: .82rem; color: var(--rumo-texto); }
 .kpi--verde .kpi__value { color: var(--rumo-verde); }
+.kpi--laranja .kpi__value { color: var(--rumo-laranja); }
 
 .grafico-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .grafico-card { background: #fff; border: 1px solid var(--borda); border-radius: var(--rumo-raio); box-shadow: var(--rumo-sombra); padding: 1.2rem; }
