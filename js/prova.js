@@ -23,9 +23,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   estado.perfil = perfil;
 
+  // Aluno só faz prova depois que o administrador aprova a solicitação de
+  // acesso. Se a consulta falhar, segue: corrigir_prova bloqueia no envio.
+  const { data: aprovado, error: erroAprovacao } = await sb.rpc("email_autorizado", { area_alvo: perfil.area });
+  if (!erroAprovacao && aprovado === false) {
+    renderAguardandoAprovacao();
+    return;
+  }
+
   await Promise.all([carregarProvas(), carregarInstrutores()]);
   renderInicio();
 });
+
+function renderAguardandoAprovacao() {
+  mostrarTela("inicio");
+  const host = document.querySelector("[data-tela='inicio']");
+  host.innerHTML = `
+    <div class="card center stack">
+      <h1>Aguardando aprovação</h1>
+      <p class="muted">
+        Sua solicitação de acesso foi enviada, mas o administrador ainda não aprovou o seu cadastro.<br>
+        Avise o especialista responsável e entre novamente depois da aprovação.
+      </p>
+    </div>`;
+}
 
 async function carregarProvas() {
   const { data, error } = await sb

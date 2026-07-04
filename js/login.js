@@ -1,302 +1,199 @@
 // =====================================================================
-// login.js — página inicial (index.html)
-// Dois cards: Administrador e Aluno. O aluno pode criar o primeiro acesso
-// mesmo sem pré-cadastro do administrador e depois entrar com o mesmo e-mail.
+// login.js — autenticação (refeito do zero)
+// Administrador: entra com e-mail e senha e vai para o Painel.
+// Aluno: solicita o primeiro acesso (nome, matrícula, e-mail e senha);
+// a solicitação fica pendente até o administrador aprovar na página
+// Cadastro de Alunos. Só depois da aprovação o aluno consegue entrar.
+// A trava de aprovação é validada no servidor (RPC email_autorizado e
+// bloqueio em corrigir_prova) — o front apenas antecipa a mensagem.
 // =====================================================================
 
 document.addEventListener("DOMContentLoaded", async () => {
   if (!window.exigeConfig()) return;
-  const areaLogin = window.getAreaEscolhida();
-  if (!areaLogin) {
-    window.location.replace("index.html");
-    return;
-  }
-  aplicarTextoDaArea(areaLogin);
+  const area = window.getAreaEscolhida();
+  aplicarTextoDaArea(area);
 
-  // Liga os formulários ANTES de qualquer espera de rede. Assim nunca acontece
-  // um envio nativo do formulário (que jogaria e-mail/senha na URL) enquanto o
-  // JavaScript ainda está carregando a sessão.
+  // Liga os formulários antes de qualquer espera de rede, para nunca
+  // acontecer um envio nativo (que jogaria e-mail/senha na URL).
   ligarAbas();
   ligarSenhaVisivel();
-  ligarFormAdmin(areaLogin);
-  ligarFormAlunoLogin(areaLogin);
-  ligarFormAlunoCriar(areaLogin);
   ligarEsqueciSenha();
+  ligarFormAdmin(area);
+  ligarFormAluno(area);
+  ligarFormSolicitar(area);
 
-  // Se já houver sessão ativa, tenta ir direto para a área certa.
+  // Sessão já ativa (ex.: F5 na página de login): segue para a página certa.
   const sessao = await getSessao();
-  if (sessao) await rotaPorPapel({ areaEsperada: areaLogin });
+  if (sessao) await encaminharLogado(area, null);
 });
 
-// Lê o papel do usuário e redireciona. Admin -> Painel; Aluno -> Prova.
-async function rotaPorPapel({ areaEsperada, roleEsperada = null, msgSelector = null } = {}) {
+// ------------------------------------------------------------- roteamento
+// Decide o destino de uma sessão autenticada. Devolve false quando a
+// sessão foi encerrada (perfil ausente, papel errado ou aluno pendente).
+async function encaminharLogado(area, msgSelector) {
   const perfil = await getPerfil();
   if (!perfil) {
-    // A conta autenticou, mas não há linha correspondente em public.profiles
-    // (ex.: banco ainda não configurado ou usuário criado antes do gatilho).
-    // Encerramos a sessão para o usuário não ficar preso num estado quebrado.
-    if (window.sb) await window.sb.auth.signOut();
-    console.error(
-      "Sessão autenticada sem perfil em public.profiles. " +
-      "Rode sql/schema.sql e o backfill de usuários no Supabase."
-    );
-    const aviso = "Conta autenticada, mas o perfil ainda não existe no banco. " +
-      "Fale com o administrador.";
-    msg("[data-msg-admin]", "erro", aviso);
-    msg("[data-msg-aluno-login]", "erro", aviso);
+    await encerrarSessao();
+    if (msgSelector) {
+      msg(msgSelector, "erro", "Conta autenticada, mas sem perfil nesta área. Fale com o administrador.");
+    }
     return false;
   }
-  if (perfil.area !== areaEsperada) {
-    if (window.sb) await window.sb.auth.signOut();
-    if (window.limparPerfilCache) window.limparPerfilCache();
-    const area = window.getAreaMeta(areaEsperada);
-    const aviso = `Este login pertence a outra área. Entre com uma conta cadastrada em ${area.titulo}.`;
-    msg(msgSelector || "[data-msg-aluno-login]", "erro", aviso);
-    msg("[data-msg-admin]", "erro", aviso);
-    return false;
+
+  if (perfil.role === "admin") {
+    window.location.replace("dashboard.html");
+    return true;
   }
-  if (roleEsperada && perfil.role !== roleEsperada) {
-    if (window.sb) await window.sb.auth.signOut();
-    if (window.limparPerfilCache) window.limparPerfilCache();
-    const aviso = roleEsperada === "admin"
-      ? "Esta conta não é administradora desta área."
-      : "Esta conta não é aluno desta área.";
-    msg(msgSelector || "[data-msg-aluno-login]", "erro", aviso);
-    return false;
+
+  if (await alunoAprovado(area)) {
+    window.location.replace("prova.html");
+    return true;
   }
-  window.setAreaEscolhida(perfil.area);
-  window.location.replace(perfil.role === "admin" ? "dashboard.html" : "prova.html");
-  return true;
+
+  await encerrarSessao();
+  msg(msgSelector || "[data-msg-aluno]", "aviso",
+    "Sua solicitação de acesso ainda não foi aprovada. Avise o administrador e tente novamente depois da aprovação.");
+  return false;
 }
 
-function aplicarTextoDaArea(areaId) {
-  const area = window.getAreaMeta(areaId);
-  document.title = `${area.titulo} · Login · Rumo`;
-  const titulo = document.querySelector("[data-area-titulo]");
-  const descricao = document.querySelector("[data-area-descricao]");
-  const rodape = document.querySelector("[data-area-rodape]");
-  const alunoLabel = document.querySelector("[data-label-aluno]");
-  if (titulo) titulo.textContent = area.titulo;
-  if (descricao) descricao.textContent = area.descricao;
-  if (rodape) rodape.textContent = area.rodape;
-  if (alunoLabel) alunoLabel.textContent = area.alunoLabel || "Aluno";
+// O cadastro do aluno está aprovado (ativo) na lista do administrador?
+// Se a consulta falhar, deixa passar: o servidor ainda bloqueia a prova.
+async function alunoAprovado(area) {
+  const { data, error } = await sb.rpc("email_autorizado", { area_alvo: area });
+  if (error) {
+    console.warn("Não consegui verificar a aprovação do cadastro:", error.message);
+    return true;
+  }
+  return data === true;
 }
 
-function ligarAbas() {
-  const abas = document.querySelectorAll("[data-tab]");
-  abas.forEach((b) => b.addEventListener("click", () => {
-    abas.forEach((x) => x.classList.toggle("is-active", x === b));
-    const alvo = b.dataset.tab;
-    document.querySelectorAll("[data-painel]").forEach((p) =>
-      p.classList.toggle("hidden", p.dataset.painel !== alvo));
-  }));
+async function encerrarSessao() {
+  if (window.sb) await window.sb.auth.signOut();
+  if (window.limparPerfilCache) window.limparPerfilCache();
 }
 
-function ligarSenhaVisivel() {
-  document.querySelectorAll("[data-toggle-password]").forEach((botao) => {
-    const input = document.getElementById(botao.dataset.togglePassword);
-    if (!input) return;
-
-    botao.addEventListener("click", () => {
-      const vaiMostrar = input.type === "password";
-      input.type = vaiMostrar ? "text" : "password";
-      botao.textContent = vaiMostrar ? "Ocultar" : "Mostrar";
-      botao.setAttribute("aria-label", vaiMostrar ? "Ocultar senha" : "Mostrar senha");
-      input.focus({ preventScroll: true });
-    });
-  });
-}
-
-function ligarFormAdmin(areaLogin) {
+// ------------------------------------------------------------ formulários
+function ligarFormAdmin(area) {
   const f = document.querySelector("[data-form-admin]");
   f.addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = f.querySelector("button[type=submit]");
     travar(btn, true, "Entrando…");
     msg("[data-msg-admin]", null);
+
     const { error } = await sb.auth.signInWithPassword({
       email: f.email.value.trim(), password: f.senha.value,
     });
     if (error) { msg("[data-msg-admin]", "erro", traduzErro(error)); travar(btn, false); return; }
-    const ok = await rotaPorPapel({ areaEsperada: areaLogin, roleEsperada: "admin", msgSelector: "[data-msg-admin]" });
-    if (!ok) travar(btn, false);
+
+    const perfil = await getPerfil();
+    if (!perfil) {
+      await encerrarSessao();
+      msg("[data-msg-admin]", "erro", "Conta autenticada, mas sem perfil nesta área. Fale com o administrador.");
+      travar(btn, false);
+      return;
+    }
+    if (perfil.role !== "admin") {
+      await encerrarSessao();
+      msg("[data-msg-admin]", "erro", "Esta conta não é de administrador. Use o card Aluno ao lado.");
+      travar(btn, false);
+      return;
+    }
+    window.location.replace("dashboard.html");
   });
 }
 
-function ligarFormAlunoLogin(areaLogin) {
-  const f = document.querySelector("[data-form-aluno-login]");
+function ligarFormAluno(area) {
+  const f = document.querySelector("[data-form-aluno]");
   f.addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = f.querySelector("button[type=submit]");
     travar(btn, true, "Entrando…");
-    msg("[data-msg-aluno-login]", null);
+    msg("[data-msg-aluno]", null);
+
     const { error } = await sb.auth.signInWithPassword({
       email: f.email.value.trim(), password: f.senha.value,
     });
-    if (error) { msg("[data-msg-aluno-login]", "erro", traduzErro(error)); travar(btn, false); return; }
-    const ok = await rotaPorPapel({ areaEsperada: areaLogin, roleEsperada: "aluno", msgSelector: "[data-msg-aluno-login]" });
-    if (!ok) travar(btn, false);
+    if (error) { msg("[data-msg-aluno]", "erro", traduzErro(error)); travar(btn, false); return; }
+
+    const perfil = await getPerfil();
+    if (!perfil) {
+      await encerrarSessao();
+      msg("[data-msg-aluno]", "erro", "Conta autenticada, mas sem perfil nesta área. Fale com o administrador.");
+      travar(btn, false);
+      return;
+    }
+    if (perfil.role === "admin") {
+      await encerrarSessao();
+      msg("[data-msg-aluno]", "erro", "Esta conta é de administrador. Use o card Administrador ao lado.");
+      travar(btn, false);
+      return;
+    }
+    if (!(await alunoAprovado(area))) {
+      await encerrarSessao();
+      msg("[data-msg-aluno]", "aviso",
+        "Sua solicitação de acesso ainda não foi aprovada pelo administrador. Tente novamente depois da aprovação.");
+      travar(btn, false);
+      return;
+    }
+    window.location.replace("prova.html");
   });
 }
 
-function ligarFormAlunoCriar(areaLogin) {
-  const f = document.querySelector("[data-form-aluno-criar]");
-  const preview = document.querySelector("[data-cadastro-preview]");
-
-  // O primeiro acesso é aberto a qualquer e-mail. Esta consulta só antecipa
-  // nome/matrícula quando o administrador já cadastrou o aluno antes;
-  // quando não encontra, o cadastro é criado como pendente no servidor
-  // (gatilho handle_new_user) e liberado depois que o administrador aprovar.
-  if (preview && f.email) {
-    let t = null;
-    f.email.addEventListener("input", () => {
-      clearTimeout(t);
-      const email = f.email.value.trim();
-      preview.textContent = "Se seu e-mail já estiver cadastrado, preenchemos seu nome automaticamente.";
-      if (!email || !email.includes("@")) return;
-      t = setTimeout(async () => {
-        const { data, error } = await buscarCadastroAluno(email, areaLogin);
-        if (error) {
-          console.warn("Cadastro de aluno não consultado:", error.message || error);
-          preview.textContent = "Não consegui consultar o cadastro agora. Tente novamente em instantes.";
-          return;
-        }
-        if (data) {
-          preview.textContent = `Cadastro encontrado: ${data.nome || email}${data.matricula ? " · " + data.matricula : ""}`;
-          if (f.elements.nome && !f.elements.nome.value && data.nome) f.elements.nome.value = data.nome;
-          if (f.elements.matricula && !f.elements.matricula.value && data.matricula) f.elements.matricula.value = data.matricula;
-        } else {
-          preview.textContent = "E-mail novo. Seu acesso será criado, mas fica pendente de aprovação do administrador até liberar as provas.";
-        }
-      }, 450);
-    });
-  }
-
+function ligarFormSolicitar(area) {
+  const f = document.querySelector("[data-form-solicitar]");
   f.addEventListener("submit", async (e) => {
     e.preventDefault();
-    msg("[data-msg-aluno-criar]", null);
-    if (f.senha.value.length < 6) {
-      return msg("[data-msg-aluno-criar]", "erro", "A senha precisa ter ao menos 6 caracteres.");
-    }
-    if (f.senha.value !== f.senha2.value) {
-      return msg("[data-msg-aluno-criar]", "erro", "As senhas não conferem.");
-    }
-    const btn = f.querySelector("button[type=submit]");
-    travar(btn, true, "Criando acesso…");
+    msg("[data-msg-solicitar]", null);
 
+    const nome = f.nome.value.trim();
+    const matricula = f.matricula.value.trim() || null;
     const email = f.email.value.trim().toLowerCase();
-    // O primeiro acesso é aberto: se a consulta falhar ou não encontrar
-    // cadastro prévio, seguimos mesmo assim — quem é novo vira pendente
-    // no servidor (gatilho handle_new_user) até o administrador aprovar.
-    const cadastro = await buscarCadastroAluno(email, areaLogin);
-    if (cadastro.error) {
-      console.warn("Cadastro de aluno não consultado:", cadastro.error.message || cadastro.error);
-    }
 
-    const nomeDigitado = (f.elements.nome?.value || "").trim();
-    const matriculaDigitada = (f.elements.matricula?.value || "").trim();
-    const dadosPerfil = {
-      nome: cadastro.data?.nome || nomeDigitado || email.split("@")[0],
-      matricula: cadastro.data?.matricula || matriculaDigitada || null,
-      criarSeNaoExistir: true,
-    };
+    if (!nome) { f.nome.focus(); return msg("[data-msg-solicitar]", "erro", "Informe seu nome completo — o administrador usa esse nome para aprovar."); }
+    if (!email || !email.includes("@")) { f.email.focus(); return msg("[data-msg-solicitar]", "erro", "Informe um e-mail válido."); }
+    if (f.senha.value.length < 6) { f.senha.focus(); return msg("[data-msg-solicitar]", "erro", "A senha precisa ter ao menos 6 caracteres."); }
+    if (f.senha.value !== f.senha2.value) { f.senha2.focus(); return msg("[data-msg-solicitar]", "erro", "As senhas não conferem."); }
 
+    const btn = f.querySelector("button[type=submit]");
+    travar(btn, true, "Enviando solicitação…");
+
+    // O signUp cria a conta no Auth; o gatilho handle_new_user (banco)
+    // registra a solicitação como PENDENTE em alunos_cadastrados.
     const { data, error } = await sb.auth.signUp({
       email,
       password: f.senha.value,
-      options: { data: { nome: dadosPerfil.nome, matricula: dadosPerfil.matricula, area: areaLogin } },
+      options: { data: { nome, matricula, area } },
     });
 
     if (error) {
-      // Se o e-mail já existe no Auth, tentamos entrar com a senha informada e
-      // criar o perfil desta área como aluno, caso ainda não exista.
-      if (emailJaCadastrado(error)) {
-        return entrarComEmailExistente(email, f.senha.value, dadosPerfil, areaLogin, btn);
-      }
-
-      msg("[data-msg-aluno-criar]", "erro", traduzErro(error));
-      travar(btn, false, "Criar primeiro acesso");
+      msg("[data-msg-solicitar]", "erro", traduzErro(error));
+      travar(btn, false);
+      return;
+    }
+    if (contaJaExistia(data)) {
+      msg("[data-msg-solicitar]", "erro",
+        "Este e-mail já tem uma conta ou solicitação em andamento. Use a aba Entrar — se esqueceu a senha, use “Esqueci minha senha”.");
+      travar(btn, false);
       return;
     }
 
-    // Em alguns projetos com confirmação de e-mail ativa, o Supabase não retorna
-    // erro para e-mail já existente; ele retorna usuário sem identities.
-    if (usuarioJaExisteNoAuth(data)) {
-      return entrarComEmailExistente(email, f.senha.value, dadosPerfil, areaLogin, btn);
-    }
-
-    // Cadastro sem registro prévio do administrador: vira pendente no
-    // servidor (gatilho handle_new_user) até ele aprovar em alunos_cadastrados.
-    const avisoPendente = cadastro.data
-      ? ""
-      : " Como seu e-mail ainda não estava cadastrado, seu acesso fica pendente de aprovação do administrador até liberar as provas.";
-
-    if (data.session) {
-      // Confirmação de e-mail desativada: já está logado.
-      const perfilArea = window.garantirPerfilArea
-        ? await window.garantirPerfilArea(areaLogin, dadosPerfil)
-        : null;
-      if (!perfilArea) {
-        msg("[data-msg-aluno-criar]", "erro",
-          "A conta foi criada, mas não consegui criar o perfil de aluno no banco. Rode o SQL schema.sql no Supabase e tente entrar novamente.");
-        travar(btn, false, "Criar primeiro acesso");
-        return;
-      }
-      msg("[data-msg-aluno-criar]", "ok", "Acesso criado!" + avisoPendente);
-      const ok = await rotaPorPapel({ areaEsperada: areaLogin, roleEsperada: "aluno", msgSelector: "[data-msg-aluno-criar]" });
-      if (!ok) travar(btn, false, "Criar primeiro acesso");
-    } else {
-      // Confirmação de e-mail ativada: precisa confirmar antes de entrar.
-      msg("[data-msg-aluno-criar]", "ok",
-        "Acesso criado! Se o Supabase pedir confirmação, confirme pelo e-mail e depois entre na aba “Entrar”." + avisoPendente);
-      travar(btn, false, "Criar primeiro acesso");
-    }
+    // A solicitação não dá acesso: encerra qualquer sessão criada pelo signUp.
+    await encerrarSessao();
+    f.reset();
+    travar(btn, false);
+    msg("[data-msg-solicitar]", "ok",
+      "Solicitação enviada! Avise o administrador para aprovar seu acesso. Depois da aprovação, entre na aba Entrar com seu e-mail e senha.");
   });
-}
-
-async function entrarComEmailExistente(email, senha, dadosPerfil, areaLogin, btn) {
-  const login = await sb.auth.signInWithPassword({ email, password: senha });
-  if (login.error) {
-    msg("[data-msg-aluno-criar]", "erro",
-      "Este e-mail já existe. Use a aba “Entrar” ou informe aqui a senha atual desse e-mail para liberar o acesso nesta área.");
-    travar(btn, false, "Criar primeiro acesso");
-    return;
-  }
-
-  if (window.garantirPerfilArea) {
-    const perfilArea = await window.garantirPerfilArea(areaLogin, dadosPerfil);
-    if (!perfilArea) {
-      msg("[data-msg-aluno-criar]", "erro",
-        "Entrei com o e-mail, mas não consegui criar o perfil desta área. Rode o SQL schema.sql no Supabase e tente novamente.");
-      travar(btn, false, "Criar primeiro acesso");
-      return;
-    }
-  }
-
-  const ok = await rotaPorPapel({ areaEsperada: areaLogin, roleEsperada: "aluno", msgSelector: "[data-msg-aluno-criar]" });
-  if (!ok) travar(btn, false, "Criar primeiro acesso");
-}
-
-async function buscarCadastroAluno(email, areaLogin) {
-  const normalizado = String(email || "").trim().toLowerCase();
-  if (!normalizado) return { data: null, error: null };
-  const { data, error } = await sb.rpc("buscar_aluno_cadastrado", {
-    p_email: normalizado,
-    p_area: areaLogin,
-  });
-  if (error) return { data: null, error };
-  const linha = Array.isArray(data) ? (data[0] || null) : data;
-  return { data: linha, error: null };
 }
 
 // ---- Esqueci minha senha ----
 // Botões [data-esqueci="idDoInputDeEmail"] com data-msg="seletorDaMsg".
-// Envia o link de redefinição; a nova senha é definida em redefinir-senha.html.
 function ligarEsqueciSenha() {
   document.querySelectorAll("[data-esqueci]").forEach((botao) => {
     botao.addEventListener("click", async () => {
       const input = document.getElementById(botao.dataset.esqueci);
-      const alvoMsg = botao.dataset.msg || "[data-msg-aluno-login]";
+      const alvoMsg = botao.dataset.msg || "[data-msg-aluno]";
       const email = (input?.value || "").trim();
       if (!email || !email.includes("@")) {
         msg(alvoMsg, "erro", "Digite seu e-mail no campo acima e clique de novo em “Esqueci minha senha”.");
@@ -307,23 +204,56 @@ function ligarEsqueciSenha() {
       const redirectTo = new URL("redefinir-senha.html", window.location.href).href;
       const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
       botao.disabled = false;
-      if (error) {
-        msg(alvoMsg, "erro", traduzErro(error));
-        return;
-      }
-      msg(alvoMsg, "ok",
-        "Se este e-mail tiver acesso, enviamos um link de redefinição de senha. Abra o e-mail e siga o link.");
+      if (error) { msg(alvoMsg, "erro", traduzErro(error)); return; }
+      msg(alvoMsg, "ok", "Se este e-mail tiver acesso, enviamos um link de redefinição de senha. Abra o e-mail e siga o link.");
     });
   });
 }
 
-// ---- helpers de UI ----
+// ------------------------------------------------------------- UI helpers
+function aplicarTextoDaArea(areaId) {
+  const area = window.getAreaMeta(areaId);
+  document.title = `${area.titulo} · Login · Rumo`;
+  const titulo = document.querySelector("[data-area-titulo]");
+  const descricao = document.querySelector("[data-area-descricao]");
+  const rodape = document.querySelector("[data-area-rodape]");
+  const alunoLabel = document.querySelector("[data-label-aluno]");
+  if (titulo) titulo.textContent = area.titulo;
+  if (descricao) descricao.textContent = area.descricao;
+  if (rodape) rodape.textContent = (area.rodape || "") + " · v3";
+  if (alunoLabel) alunoLabel.textContent = area.alunoLabel || "Aluno";
+}
+
+function ligarAbas() {
+  const abas = document.querySelectorAll("[data-tab]");
+  abas.forEach((b) => b.addEventListener("click", () => {
+    abas.forEach((x) => x.classList.toggle("is-active", x === b));
+    document.querySelectorAll("[data-painel]").forEach((p) =>
+      p.classList.toggle("hidden", p.dataset.painel !== b.dataset.tab));
+  }));
+}
+
+function ligarSenhaVisivel() {
+  document.querySelectorAll("[data-toggle-password]").forEach((botao) => {
+    const input = document.getElementById(botao.dataset.togglePassword);
+    if (!input) return;
+    botao.addEventListener("click", () => {
+      const vaiMostrar = input.type === "password";
+      input.type = vaiMostrar ? "text" : "password";
+      botao.textContent = vaiMostrar ? "Ocultar" : "Mostrar";
+      botao.setAttribute("aria-label", vaiMostrar ? "Ocultar senha" : "Mostrar senha");
+      input.focus({ preventScroll: true });
+    });
+  });
+}
+
 function travar(btn, on, txt) {
   if (!btn) return;
   if (!btn.dataset.textoOriginal) btn.dataset.textoOriginal = btn.textContent;
   btn.disabled = on;
   btn.textContent = txt || (on ? btn.textContent : btn.dataset.textoOriginal);
 }
+
 function msg(sel, tipo, texto) {
   const el = document.querySelector(sel);
   if (!el) return;
@@ -332,12 +262,10 @@ function msg(sel, tipo, texto) {
   el.style.marginTop = ".8rem";
   el.textContent = texto;
 }
-function emailJaCadastrado(error) {
-  const m = (error && error.message) || "";
-  return /already registered|already been registered|user already registered|email.*exists|already exists/i.test(m);
-}
 
-function usuarioJaExisteNoAuth(data) {
+// Com confirmação de e-mail ativa, o Supabase não devolve erro para e-mail
+// repetido no signUp: devolve um usuário sem identities.
+function contaJaExistia(data) {
   const ids = data?.user?.identities;
   return Array.isArray(ids) && ids.length === 0;
 }
@@ -345,13 +273,15 @@ function usuarioJaExisteNoAuth(data) {
 function traduzErro(error) {
   const m = (error && error.message) || "Erro inesperado.";
   if (/invalid login credentials/i.test(m)) return "E-mail ou senha incorretos.";
-  if (emailJaCadastrado(error)) return "Este e-mail já tem acesso. Use a aba “Entrar”.";
+  if (/already registered|already been registered|user already registered|already exists/i.test(m)) {
+    return "Este e-mail já tem uma conta ou solicitação em andamento. Use a aba Entrar.";
+  }
   if (/email.+confirm/i.test(m)) return "Confirme seu e-mail antes de entrar.";
   if (/rate limit/i.test(m)) return "Muitas tentativas. Aguarde um instante e tente de novo.";
-  // O gatilho handle_new_user bloqueia signup de e-mail não cadastrado; o
-  // Supabase devolve esse bloqueio como "Database error saving new user".
-  if (/cadastro não autorizado|database error saving new user/i.test(m)) {
-    return "Seu e-mail ainda não foi liberado pelo administrador para o primeiro acesso.";
+  // O gatilho handle_new_user recusa e-mail marcado como inativo; o Supabase
+  // devolve isso como "Database error saving new user".
+  if (/cadastro está inativo|database error saving new user/i.test(m)) {
+    return "Este e-mail está bloqueado pelo administrador. Procure o especialista responsável.";
   }
   return m;
 }

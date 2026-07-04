@@ -6,7 +6,7 @@
   <title>Login · Homologações · Rumo</title>
   <meta name="description" content="Login por área para homologações Rumo." />
   <link rel="icon" href="assets/favicon.png" />
-  <link rel="stylesheet" href="css/rumo.css?v=20260704-seguranca-v1" />
+  <link rel="stylesheet" href="css/rumo.css?v=20260704-login-v3" />
 </head>
 <body>
   <div class="login-shell">
@@ -31,7 +31,7 @@
                 <div class="login-card__icon" aria-hidden="true">🛠️</div>
                 <div>
                   <h2>Administrador</h2>
-                  <p class="muted">Acesso do especialista que aplica e gerencia as provas.</p>
+                  <p class="muted">Acesso do especialista que aplica as provas, gerencia contas e aprova novos alunos.</p>
                 </div>
               </div>
 
@@ -59,18 +59,18 @@
                 <div class="login-card__icon" aria-hidden="true">👷</div>
                 <div>
                   <h2 data-label-aluno>Aluno</h2>
-                  <p class="muted">Entre com sua senha ou crie seu primeiro acesso usando seu e-mail.</p>
+                  <p class="muted">Entre com sua senha ou solicite seu primeiro acesso ao administrador.</p>
                 </div>
               </div>
 
               <div class="tabs" role="tablist" aria-label="Acesso do aluno">
                 <button type="button" class="is-active" data-tab="entrar">Entrar</button>
-                <button type="button" data-tab="criar">Primeiro acesso</button>
+                <button type="button" data-tab="solicitar">Solicitar acesso</button>
               </div>
 
               <!-- Entrar -->
               <div data-painel="entrar">
-                <form data-form-aluno-login method="post" novalidate>
+                <form data-form-aluno method="post" novalidate>
                   <div class="field">
                     <label for="al-email">E-mail</label>
                     <input id="al-email" class="input" type="email" name="email" autocomplete="username" required placeholder="seu@email.com" />
@@ -83,50 +83,49 @@
                     </div>
                   </div>
                   <button class="btn btn--success btn--block" type="submit">Entrar como aluno</button>
-                  <button type="button" class="btn btn--ghost btn--sm btn--block" style="margin-top:.5rem" data-esqueci="al-email" data-msg="[data-msg-aluno-login]">Esqueci minha senha</button>
-                  <div class="hidden" data-msg-aluno-login></div>
+                  <button type="button" class="btn btn--ghost btn--sm btn--block" style="margin-top:.5rem" data-esqueci="al-email" data-msg="[data-msg-aluno]">Esqueci minha senha</button>
+                  <div class="hidden" data-msg-aluno></div>
                 </form>
               </div>
 
-              <!-- Primeiro acesso -->
-              <div data-painel="criar" class="hidden">
-                <form data-form-aluno-criar method="post" novalidate>
+              <!-- Solicitar primeiro acesso -->
+              <div data-painel="solicitar" class="hidden">
+                <form data-form-solicitar method="post" novalidate>
                   <div class="alerta alerta--info" style="margin-bottom:1rem">
-                    Use esta opção quando você ainda não tem acesso. Cadastre seu e-mail e uma senha para criar seu primeiro acesso. Se o administrador ainda não te cadastrou, sua conta fica <b>pendente de aprovação</b> até ele liberar as provas.
+                    Preencha seus dados e crie uma senha. Sua solicitação vai para o <b>administrador</b>: assim que ele aprovar, você entra na aba <b>Entrar</b> com este e-mail e senha.
+                  </div>
+                  <div class="row row--senha">
+                    <div class="field">
+                      <label for="so-nome">Nome completo</label>
+                      <input id="so-nome" class="input" type="text" name="nome" autocomplete="name" required placeholder="Seu nome" />
+                    </div>
+                    <div class="field">
+                      <label for="so-matricula">Matrícula <span class="muted">(opcional)</span></label>
+                      <input id="so-matricula" class="input" type="text" name="matricula" autocomplete="off" placeholder="Ex.: TR061052" />
+                    </div>
                   </div>
                   <div class="field">
-                    <label for="cr-email">E-mail</label>
-                    <input id="cr-email" class="input" type="email" name="email" autocomplete="username" required placeholder="seu@email.com" />
-                    <div class="field__hint" data-cadastro-preview>Se seu e-mail já estiver cadastrado, preenchemos seu nome automaticamente.</div>
+                    <label for="so-email">E-mail</label>
+                    <input id="so-email" class="input" type="email" name="email" autocomplete="username" required placeholder="seu@email.com" />
                   </div>
                   <div class="row row--senha">
                     <div class="field">
-                      <label for="cr-nome">Nome completo</label>
-                      <input id="cr-nome" class="input" type="text" name="nome" autocomplete="name" placeholder="Seu nome" />
-                    </div>
-                    <div class="field">
-                      <label for="cr-matricula">Matrícula <span class="muted">(opcional)</span></label>
-                      <input id="cr-matricula" class="input" type="text" name="matricula" autocomplete="off" placeholder="Matrícula" />
-                    </div>
-                  </div>
-                  <div class="row row--senha">
-                    <div class="field">
-                      <label for="cr-senha">Senha</label>
+                      <label for="so-senha">Senha</label>
                       <div class="senha-wrap">
-                        <input id="cr-senha" class="input" type="password" name="senha" autocomplete="new-password" required placeholder="mín. 6 caracteres" />
-                        <button type="button" class="senha-toggle" data-toggle-password="cr-senha" aria-label="Mostrar senha">Mostrar</button>
+                        <input id="so-senha" class="input" type="password" name="senha" autocomplete="new-password" required placeholder="mín. 6 caracteres" />
+                        <button type="button" class="senha-toggle" data-toggle-password="so-senha" aria-label="Mostrar senha">Mostrar</button>
                       </div>
                     </div>
                     <div class="field">
-                      <label for="cr-senha2">Repetir senha</label>
+                      <label for="so-senha2">Repetir senha</label>
                       <div class="senha-wrap">
-                        <input id="cr-senha2" class="input" type="password" name="senha2" autocomplete="new-password" required placeholder="repita a senha" />
-                        <button type="button" class="senha-toggle" data-toggle-password="cr-senha2" aria-label="Mostrar senha">Mostrar</button>
+                        <input id="so-senha2" class="input" type="password" name="senha2" autocomplete="new-password" required placeholder="repita a senha" />
+                        <button type="button" class="senha-toggle" data-toggle-password="so-senha2" aria-label="Mostrar senha">Mostrar</button>
                       </div>
                     </div>
                   </div>
-                  <button class="btn btn--success btn--block" type="submit">Criar primeiro acesso</button>
-                  <div class="hidden" data-msg-aluno-criar></div>
+                  <button class="btn btn--success btn--block" type="submit">Enviar solicitação de acesso</button>
+                  <div class="hidden" data-msg-solicitar></div>
                 </form>
               </div>
             </section>
@@ -134,13 +133,13 @@
         </section>
       </div>
     </main>
-    <footer class="login-foot" data-area-rodape>Rumo · Uso interno — Homologação Alívio de Tensão · v2</footer>
+    <footer class="login-foot" data-area-rodape>Rumo · Uso interno — Homologação Alívio de Tensão · v3</footer>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>if(!window.supabase){document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');}</script>
-  <script src="js/config.js?v=20260704-seguranca-v1"></script>
-  <script src="js/app.js?v=20260704-seguranca-v1"></script>
-  <script src="js/login.js?v=20260704-seguranca-v1"></script>
+  <script src="js/config.js?v=20260704-login-v3"></script>
+  <script src="js/app.js?v=20260704-login-v3"></script>
+  <script src="js/login.js?v=20260704-login-v3"></script>
 </body>
 </html>

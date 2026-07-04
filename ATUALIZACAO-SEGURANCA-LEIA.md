@@ -23,11 +23,11 @@ verificável em lugar nenhum.
   são calculados no Postgres. Insert direto em `tentativas` foi bloqueado.
 - `questoes_da_prova` — devolve as questões **sem** `correta`/`justificativa`;
   o select direto na tabela `questoes` ficou restrito ao administrador.
-- `handle_new_user` — **[ATUALIZADO]** primeiro acesso agora é aberto a
-  qualquer e-mail. Quem não tem cadastro prévio entra automaticamente em
-  `alunos_cadastrados` como **pendente (inativo)** até o administrador
-  aprovar; e-mail que o administrador marcou como inativo continua bloqueado
-  no servidor (validação não dá para burlar).
+- `handle_new_user` — **[ATUALIZADO]** o aluno **solicita** o primeiro
+  acesso pela tela de login: a solicitação entra em `alunos_cadastrados`
+  como **pendente (inativo)** e o aluno só consegue entrar depois que o
+  administrador aprovar na página Cadastro de Alunos; e-mail marcado como
+  inativo continua bloqueado no servidor (validação não dá para burlar).
 - Aluno com cadastro **inativo** não registra prova.
 - Nota gravada sempre com **1 casa decimal** (notas antigas normalizadas).
 - `codigo_cert` virou coluna real + RPC pública `verificar_certificado`.
@@ -37,9 +37,13 @@ verificável em lugar nenhum.
 - `js/prova.js` — usa as duas RPCs; embaralha também as **alternativas**;
   rascunho no `localStorage` (F5/queda de rede não perde a prova; banner
   "Continuar prova"); instrutor travado na lista de administradores.
-- `js/login.js` + `login.html` — primeiro acesso aberto a qualquer e-mail,
-  com aviso de pendência quando não há cadastro prévio; botão
-  **Esqueci minha senha** nos dois perfis.
+- `js/login.js` + `login.html` — **refeitos do zero (v3)**: card de
+  administrador e card de aluno com abas **Entrar** e **Solicitar acesso**;
+  o login do aluno é barrado enquanto a solicitação não for aprovada;
+  botão **Esqueci minha senha** nos dois perfis.
+- `js/cadastro-alunos.js` — central única de contas: aprova/recusa
+  solicitações, cria e edita contas e promove/rebaixa administradores
+  (a página Cadastro de contas foi removida).
 - `redefinir-senha.html` — página do link de redefinição.
 - `verificar.html` — validação pública do código HSA-XXXXXXXX (aceita
   `?codigo=` na URL; o PDF do certificado agora imprime esse link).

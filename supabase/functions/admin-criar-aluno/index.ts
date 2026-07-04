@@ -72,6 +72,7 @@ serve(async (req) => {
     const matricula = limparTexto(body.matricula) || null;
     const email = limparTexto(body.email);
     const emailNormalizado = normalizarEmail(email);
+    const empresa = limparTexto(body.empresa) || null;
     const senha = typeof body.senha === "string" ? body.senha : "";
     const ativo = body.ativo !== false;
 
@@ -109,6 +110,7 @@ serve(async (req) => {
         matricula,
         email,
         email_normalizado: emailNormalizado,
+        empresa,
         ativo,
         criado_por: adminLogado.id,
         atualizado_em: new Date().toISOString(),
@@ -141,7 +143,7 @@ serve(async (req) => {
         email: emailNormalizado,
         password: senha,
         email_confirm: true,
-        user_metadata: { nome, matricula, area },
+        user_metadata: { nome, matricula, empresa, area },
       });
 
       if (erroCriar || !novo?.user) {
@@ -157,6 +159,7 @@ serve(async (req) => {
           ...(usuarioExistente.user_metadata || {}),
           nome,
           matricula,
+          empresa,
           area,
         },
       };
@@ -177,6 +180,15 @@ serve(async (req) => {
 
     const userId = usuarioAuth.id;
 
+    // Preserva o papel de quem já tem perfil: editar os dados de um
+    // administrador não pode rebaixá-lo para aluno.
+    const { data: perfilExistente } = await supabaseAdmin
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .eq("area", area)
+      .maybeSingle();
+
     const { error: erroProfile } = await supabaseAdmin
       .from("profiles")
       .upsert({
@@ -185,8 +197,9 @@ serve(async (req) => {
         matricula,
         email,
         email_normalizado: emailNormalizado,
+        empresa,
         area,
-        role: "aluno",
+        role: perfilExistente?.role || "aluno",
       }, { onConflict: "id,area" });
 
     if (erroProfile) {

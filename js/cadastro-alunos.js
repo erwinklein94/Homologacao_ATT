@@ -1,106 +1,131 @@
 // =====================================================================
-// cadastro-alunos.js — cadastro administrativo de alunos autorizados
-// O administrador cadastra nome, matrícula, e-mail e senha inicial.
-// A senha é usada apenas para criar/atualizar o usuário no Supabase Auth;
-// ela NÃO fica salva na tabela public.alunos_cadastrados.
+// cadastro-alunos.js — central de contas do administrador (refeito)
+// - Aprova ou recusa as solicitações de primeiro acesso feitas no login.
+// - Cria contas de aluno do zero (com senha inicial) via Edge Function
+//   admin-criar-aluno e edita os dados de qualquer conta existente.
+// - Promove aluno a administrador e rebaixa administrador a aluno.
+//
+// Modelo de dados: profiles = contas reais (admin/aluno);
+// alunos_cadastrados = autorização de prova (ativo) e fila de solicitações
+// (ativo=false sem criado_por = pendente). Recusar/desativar NUNCA apaga o
+// registro: sem ele, corrigir_prova deixaria de bloquear a prova.
 // =====================================================================
 
 const cad = {
   perfil: null,
-  alunos: [],
-  editandoId: null,
+  contas: [],      // public.profiles da área
+  cadastros: [],   // public.alunos_cadastrados da área
+  editandoEmail: null,
+  busca: "",
+  filtro: "",
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
   const perfil = await protegerPagina({ requerAdmin: true });
   if (!perfil) return;
   cad.perfil = perfil;
-  await carregarAlunos();
-  renderCadastroAlunos();
+  await carregarDados();
+  render();
 });
 
-async function carregarAlunos() {
-  const { data, error } = await sb
-    .from("alunos_cadastrados")
-    .select("id, area, nome, matricula, email, email_normalizado, ativo, criado_por, criado_em, atualizado_em")
-    .eq("area", cad.perfil.area)
-    .order("nome", { ascending: true });
+async function carregarDados() {
+  const [contas, cadastros] = await Promise.all([
+    sb.from("profiles")
+      .select("id, nome, matricula, email, email_normalizado, empresa, role, area, criado_em")
+      .eq("area", cad.perfil.area)
+      .order("nome", { ascending: true }),
+    sb.from("alunos_cadastrados")
+      .select("id, area, nome, matricula, email, email_normalizado, empresa, ativo, criado_por, criado_em")
+      .eq("area", cad.perfil.area)
+      .order("criado_em", { ascending: false }),
+  ]);
 
-  if (error) {
-    console.error(error);
-    cad.alunos = [];
-    return { error };
-  }
-  cad.alunos = data || [];
-  return { error: null };
+  if (contas.error) console.error("Erro ao carregar contas:", contas.error);
+  if (cadastros.error) console.error("Erro ao carregar cadastros:", cadastros.error);
+  cad.contas = contas.data || [];
+  cad.cadastros = cadastros.data || [];
 }
 
-// Pendente = criou o próprio primeiro acesso (sem passar pelo admin) e
-// ainda não foi aprovado. Distingue-se de um aluno que o admin desativou
-// manualmente porque nesse caso "criado_por" já foi preenchido.
-function ehPendente(aluno) {
-  return !aluno.ativo && !aluno.criado_por;
+// Solicitação pendente = veio do "Solicitar acesso" do login (sem criado_por)
+// e ainda não foi aprovada nem recusada por um administrador.
+function ehPendente(c) {
+  return !c.ativo && !c.criado_por;
 }
 
-function renderCadastroAlunos() {
+function cadastroDaConta(conta) {
+  const chave = conta.email_normalizado || String(conta.email || "").trim().toLowerCase();
+  return cad.cadastros.find((c) => c.email_normalizado === chave) || null;
+}
+
+function contaDoCadastro(cadastro) {
+  return cad.contas.find(
+    (p) => (p.email_normalizado || String(p.email || "").trim().toLowerCase()) === cadastro.email_normalizado
+  ) || null;
+}
+
+// ------------------------------------------------------------------ render
+function render() {
   const host = document.querySelector("[data-cadastro-alunos]");
-  const total = cad.alunos.length;
-  const ativos = cad.alunos.filter((a) => a.ativo).length;
-  const pendentes = cad.alunos.filter(ehPendente);
-  const inativos = total - ativos;
+  const pendentes = cad.cadastros.filter(ehPendente);
+  const admins = cad.contas.filter((c) => c.role === "admin").length;
+  const alunos = cad.contas.filter((c) => c.role === "aluno").length;
 
   host.innerHTML = `
     <div class="kpis" style="margin-bottom:1.2rem">
-      <div class="kpi"><div class="kpi__label">Alunos cadastrados</div><div class="kpi__value">${total}</div></div>
-      <div class="kpi kpi--verde"><div class="kpi__label">Ativos</div><div class="kpi__value">${ativos}</div></div>
-      <div class="kpi"><div class="kpi__label">Inativos</div><div class="kpi__value">${inativos}</div></div>
-      <div class="kpi kpi--laranja"><div class="kpi__label">Pendentes de aprovação</div><div class="kpi__value">${pendentes.length}</div></div>
+      <div class="kpi"><div class="kpi__label">Contas</div><div class="kpi__value">${cad.contas.length}</div></div>
+      <div class="kpi"><div class="kpi__label">Administradores</div><div class="kpi__value">${admins}</div></div>
+      <div class="kpi kpi--verde"><div class="kpi__label">Alunos</div><div class="kpi__value">${alunos}</div></div>
+      <div class="kpi kpi--laranja"><div class="kpi__label">Solicitações de acesso</div><div class="kpi__value">${pendentes.length}</div></div>
     </div>
 
     <div class="card card--chanfro stack" style="margin-bottom:1.2rem">
       <div class="toolbar">
-        <h2 style="margin:0">Aprovações pendentes</h2>
-        <span class="badge badge--aviso badge--dot">${pendentes.length} aguardando</span>
+        <h2 style="margin:0">Solicitações de acesso</h2>
+        <span class="badge ${pendentes.length ? "badge--aviso" : "badge--ok"} badge--dot">${pendentes.length} aguardando</span>
       </div>
       <p class="muted" style="margin:0">
-        Alunos que criaram o próprio primeiro acesso pelo login, sem cadastro prévio. Aprove para liberar as provas ou recuse para manter bloqueado.
+        Alunos que pediram o primeiro acesso pela tela de login. <b>Aprovar</b> finaliza o registro e libera o login e as provas;
+        <b>Recusar</b> mantém o e-mail bloqueado (dá para reativar depois na lista de contas).
       </p>
-      <div data-tabela-pendentes></div>
+      <div data-tabela-solicitacoes></div>
     </div>
 
     <div class="card card--chanfro stack" style="margin-bottom:1.2rem">
       <div>
-        <h2 style="margin-bottom:.25rem" data-form-titulo>Novo aluno</h2>
-        <p class="muted" style="margin:0">
-          Cadastre o aluno e defina uma senha inicial. Depois ele já poderá entrar pela aba <b>Entrar como aluno</b> usando esse e-mail e senha.
-          <b>Importante:</b> o "Primeiro acesso" do site é aberto a qualquer e-mail — quem se cadastra sozinho sem passar por aqui antes entra automaticamente nesta lista como <b>Inativo</b> (pendente), e só consegue registrar prova depois que você marcar como <b>Ativo</b>.
+        <h2 style="margin-bottom:.25rem" data-form-titulo>Criar conta de aluno</h2>
+        <p class="muted" style="margin:0" data-form-descricao>
+          Cadastre um aluno do zero com senha inicial: ele já sai aprovado e pode entrar direto pela aba
+          <b>Entrar</b> do login, sem passar pela solicitação.
         </p>
         <p class="muted small" style="margin:.35rem 0 0">
-          A senha é enviada ao Supabase Auth e não fica salva na tabela de cadastro.
-          Para isso funcionar, publique a Edge Function <code>admin-criar-aluno</code> incluída neste projeto.
+          A senha vai para o Supabase Auth pela Edge Function <code>admin-criar-aluno</code> e não fica salva no banco.
         </p>
       </div>
 
-      <form data-form-cadastro-aluno novalidate>
+      <form data-form-conta novalidate>
         <div class="row">
           <div class="field" style="flex:2;min-width:240px">
-            <label for="cad-nome">Nome completo</label>
-            <input id="cad-nome" class="input" name="nome" required placeholder="Nome do aluno" />
+            <label for="ct-nome">Nome completo</label>
+            <input id="ct-nome" class="input" name="nome" required placeholder="Nome do aluno" />
           </div>
           <div class="field" style="min-width:170px">
-            <label for="cad-matricula">Matrícula</label>
-            <input id="cad-matricula" class="input" name="matricula" placeholder="Ex.: TR061052" />
+            <label for="ct-matricula">Matrícula</label>
+            <input id="ct-matricula" class="input" name="matricula" placeholder="Ex.: TR061052" />
           </div>
         </div>
         <div class="row">
           <div class="field" style="flex:2;min-width:240px">
-            <label for="cad-email">E-mail</label>
-            <input id="cad-email" class="input" type="email" name="email" required placeholder="aluno@rumolog.com" />
+            <label for="ct-email">E-mail</label>
+            <input id="ct-email" class="input" type="email" name="email" required placeholder="aluno@rumolog.com" />
             <div class="field__hint" data-hint-email></div>
           </div>
-          <div class="field" style="min-width:160px">
-            <label for="cad-status">Status</label>
-            <select id="cad-status" class="select" name="ativo">
+          <div class="field" style="flex:1;min-width:180px">
+            <label for="ct-empresa">Empresa</label>
+            <input id="ct-empresa" class="input" name="empresa" placeholder="Ex.: Rumo, COTRIN" />
+          </div>
+          <div class="field" style="min-width:150px">
+            <label for="ct-status">Status</label>
+            <select id="ct-status" class="select" name="ativo">
               <option value="true">Ativo</option>
               <option value="false">Inativo</option>
             </select>
@@ -108,17 +133,17 @@ function renderCadastroAlunos() {
         </div>
         <div class="row">
           <div class="field" style="flex:1;min-width:220px">
-            <label for="cad-senha">Senha inicial</label>
-            <input id="cad-senha" class="input" type="password" name="senha" autocomplete="new-password" placeholder="Mínimo 6 caracteres" />
-            <div class="field__hint" data-hint-senha>Obrigatória para novo aluno. Em edição, preencha apenas se quiser trocar a senha.</div>
+            <label for="ct-senha">Senha inicial</label>
+            <input id="ct-senha" class="input" type="password" name="senha" autocomplete="new-password" placeholder="Mínimo 6 caracteres" />
+            <div class="field__hint" data-hint-senha>Obrigatória para conta nova. Em edição, preencha apenas para trocar a senha.</div>
           </div>
           <div class="field" style="flex:1;min-width:220px">
-            <label for="cad-senha2">Confirmar senha</label>
-            <input id="cad-senha2" class="input" type="password" name="senha2" autocomplete="new-password" placeholder="Repita a senha" />
+            <label for="ct-senha2">Confirmar senha</label>
+            <input id="ct-senha2" class="input" type="password" name="senha2" autocomplete="new-password" placeholder="Repita a senha" />
           </div>
         </div>
         <div class="toolbar">
-          <button class="btn btn--success" type="submit" data-btn-salvar>Salvar aluno e criar acesso</button>
+          <button class="btn btn--success" type="submit" data-btn-salvar>Criar conta</button>
           <button class="btn btn--ghost hidden" type="button" data-btn-cancelar>Cancelar edição</button>
           <span class="spacer"></span>
           <span class="muted small" data-status-form></span>
@@ -128,56 +153,67 @@ function renderCadastroAlunos() {
 
     <div class="card stack">
       <div class="toolbar">
-        <h2 style="margin:0">Lista de alunos</h2>
+        <h2 style="margin:0">Contas e cadastros</h2>
         <span class="spacer"></span>
         <div class="field" style="margin:0;min-width:260px">
-          <label for="busca-aluno">Buscar</label>
-          <input id="busca-aluno" class="input" data-busca-aluno placeholder="Nome, matrícula ou e-mail…" />
+          <label for="ct-busca">Buscar</label>
+          <input id="ct-busca" class="input" data-busca placeholder="Nome, matrícula, e-mail ou empresa…" />
         </div>
-        <div class="field" style="margin:0;min-width:150px">
-          <label for="filtro-status">Status</label>
-          <select id="filtro-status" class="select" data-filtro-status>
+        <div class="field" style="margin:0;min-width:170px">
+          <label for="ct-filtro">Mostrar</label>
+          <select id="ct-filtro" class="select" data-filtro>
             <option value="">Todos</option>
-            <option value="ativo">Ativos</option>
+            <option value="admin">Administradores</option>
+            <option value="aluno">Alunos</option>
+            <option value="pendente">Pendentes</option>
             <option value="inativo">Inativos</option>
           </select>
         </div>
       </div>
-      <div data-tabela-alunos></div>
+      <p class="muted small" style="margin:0">
+        Aqui você edita qualquer conta, muda o papel (aluno ⇄ administrador) e ativa/desativa o acesso às provas.
+      </p>
+      <div data-tabela-contas></div>
     </div>`;
 
-  desenharTabelaPendentes(pendentes);
+  desenharSolicitacoes(pendentes);
 
-  const form = host.querySelector("[data-form-cadastro-aluno]");
-  form.addEventListener("submit", salvarAluno);
+  const form = host.querySelector("[data-form-conta]");
+  form.addEventListener("submit", salvarConta);
   host.querySelector("[data-btn-cancelar]").addEventListener("click", limparFormulario);
 
-  const aplicar = () => desenharTabelaAlunos(
-    host.querySelector("[data-busca-aluno]").value.trim().toLowerCase(),
-    host.querySelector("[data-filtro-status]").value
-  );
-  host.querySelector("[data-busca-aluno]").addEventListener("input", aplicar);
-  host.querySelector("[data-filtro-status]").addEventListener("change", aplicar);
-  aplicar();
+  const busca = host.querySelector("[data-busca]");
+  const filtro = host.querySelector("[data-filtro]");
+  busca.value = cad.busca;
+  filtro.value = cad.filtro;
+  const aplicar = () => {
+    cad.busca = busca.value.trim().toLowerCase();
+    cad.filtro = filtro.value;
+    desenharContas();
+  };
+  busca.addEventListener("input", aplicar);
+  filtro.addEventListener("change", aplicar);
+  desenharContas();
 }
 
-function desenharTabelaPendentes(pendentes) {
-  const host = document.querySelector("[data-tabela-pendentes]");
+// --------------------------------------------------------- solicitações
+function desenharSolicitacoes(pendentes) {
+  const host = document.querySelector("[data-tabela-solicitacoes]");
   if (!host) return;
 
   if (pendentes.length === 0) {
-    host.innerHTML = `<p class="muted center" style="padding:1rem 0">Nenhum pedido de primeiro acesso aguardando aprovação.</p>`;
+    host.innerHTML = `<p class="muted center" style="padding:1rem 0">Nenhuma solicitação de acesso aguardando aprovação.</p>`;
     return;
   }
 
-  const corpo = pendentes.map((a) => `<tr>
-      <td><b>${escaparHtml(a.nome || "—")}</b></td>
-      <td class="nowrap">${escaparHtml(a.matricula || "—")}</td>
-      <td>${escaparHtml(a.email || "—")}</td>
-      <td class="nowrap">${fmtData(a.criado_em)}</td>
+  const corpo = pendentes.map((c) => `<tr>
+      <td><b>${escaparHtml(c.nome || "—")}</b></td>
+      <td class="nowrap">${escaparHtml(c.matricula || "—")}</td>
+      <td>${escaparHtml(c.email || "—")}</td>
+      <td class="nowrap">${fmtData(c.criado_em)}</td>
       <td class="nowrap">
-        <button class="btn btn--success btn--sm" data-aprovar-aluno="${a.id}">Aprovar</button>
-        <button class="btn btn--danger btn--sm" data-recusar-aluno="${a.id}">Recusar</button>
+        <button class="btn btn--success btn--sm" data-aprovar="${c.id}">Aprovar</button>
+        <button class="btn btn--ghost btn--sm" data-recusar="${c.id}">Recusar</button>
       </td>
     </tr>`).join("");
 
@@ -191,149 +227,229 @@ function desenharTabelaPendentes(pendentes) {
       </table>
     </div>`;
 
-  host.querySelectorAll("[data-aprovar-aluno]").forEach((b) =>
-    b.addEventListener("click", () => aprovarAluno(b.dataset.aprovarAluno)));
-  host.querySelectorAll("[data-recusar-aluno]").forEach((b) =>
-    b.addEventListener("click", () => recusarAluno(b.dataset.recusarAluno)));
+  host.querySelectorAll("[data-aprovar]").forEach((b) =>
+    b.addEventListener("click", () => aprovarSolicitacao(b.dataset.aprovar)));
+  host.querySelectorAll("[data-recusar]").forEach((b) =>
+    b.addEventListener("click", () => recusarSolicitacao(b.dataset.recusar)));
 }
 
-async function aprovarAluno(id) {
-  const aluno = cad.alunos.find((a) => a.id === id);
-  if (!aluno) return;
-  const { error } = await sb
-    .from("alunos_cadastrados")
-    .update({ ativo: true })
+async function aprovarSolicitacao(id) {
+  const c = cad.cadastros.find((x) => x.id === id);
+  if (!c) return;
+  const { error } = await sb.from("alunos_cadastrados")
+    .update({ ativo: true, criado_por: cad.perfil.id })
     .eq("id", id);
   if (error) { alert("Erro ao aprovar: " + error.message); return; }
-  await carregarAlunos();
-  renderCadastroAlunos();
+  await recarregar();
 }
 
-async function recusarAluno(id) {
-  const aluno = cad.alunos.find((a) => a.id === id);
-  if (!aluno) return;
-  const ok = confirm(`Recusar o pedido de primeiro acesso de ${aluno.nome || aluno.email}? Ele continua Inativo (bloqueado para provas) e some da lista de pendentes; se mudar de ideia, reative em "Lista de alunos".`);
+async function recusarSolicitacao(id) {
+  const c = cad.cadastros.find((x) => x.id === id);
+  if (!c) return;
+  const ok = confirm(
+    `Recusar a solicitação de ${c.nome || c.email}? O e-mail continua bloqueado para provas. ` +
+    `Se mudar de ideia, é só reativar na lista de contas.`
+  );
   if (!ok) return;
-  // NÃO apaga o registro: sem ele, corrigir_prova não encontra o e-mail e
-  // deixa de bloquear a prova. Em vez disso, marca como revisado (fica
-  // Inativo normal, editável na lista, e sai da fila de pendentes).
-  const { error } = await sb
-    .from("alunos_cadastrados")
+  // Marca como revisado (criado_por) mantendo ativo=false. O registro NÃO é
+  // apagado: sem ele, corrigir_prova deixaria de bloquear este e-mail.
+  const { error } = await sb.from("alunos_cadastrados")
     .update({ criado_por: cad.perfil.id })
     .eq("id", id);
   if (error) { alert("Erro ao recusar: " + error.message); return; }
-  await carregarAlunos();
-  renderCadastroAlunos();
+  await recarregar();
 }
 
-function desenharTabelaAlunos(busca, filtroStatus) {
-  const host = document.querySelector("[data-tabela-alunos]");
-  let linhas = cad.alunos.filter((a) => {
-    const alvo = `${a.nome || ""} ${a.matricula || ""} ${a.email || ""}`.toLowerCase();
-    if (busca && !alvo.includes(busca)) return false;
-    if (filtroStatus === "ativo" && !a.ativo) return false;
-    if (filtroStatus === "inativo" && a.ativo) return false;
+// -------------------------------------------------------------- contas
+function desenharContas() {
+  const host = document.querySelector("[data-tabela-contas]");
+  if (!host) return;
+
+  // Linhas = todas as contas + cadastros que ainda não viraram conta
+  // (ex.: aluno cadastrado como inativo antes de criar acesso no Auth).
+  const linhas = [];
+  cad.contas.forEach((conta) => linhas.push({ conta, cadastro: cadastroDaConta(conta) }));
+  cad.cadastros.forEach((c) => {
+    if (!contaDoCadastro(c)) linhas.push({ conta: null, cadastro: c });
+  });
+
+  const filtradas = linhas.filter((l) => {
+    const dono = l.conta || l.cadastro;
+    const alvo = `${dono.nome || ""} ${dono.matricula || ""} ${dono.email || ""} ${dono.empresa || ""}`.toLowerCase();
+    if (cad.busca && !alvo.includes(cad.busca)) return false;
+    if (cad.filtro === "admin") return l.conta?.role === "admin";
+    if (cad.filtro === "aluno") return l.conta?.role === "aluno";
+    if (cad.filtro === "pendente") return l.cadastro && ehPendente(l.cadastro);
+    if (cad.filtro === "inativo") return l.cadastro && !l.cadastro.ativo && !ehPendente(l.cadastro);
     return true;
   });
 
-  if (linhas.length === 0) {
-    host.innerHTML = `<p class="muted center" style="padding:1.4rem 0">Nenhum aluno encontrado.</p>`;
+  if (filtradas.length === 0) {
+    host.innerHTML = `<p class="muted center" style="padding:1.4rem 0">Nenhuma conta encontrada.</p>`;
     return;
   }
 
-  const corpo = linhas.map((a) => {
-    const pendente = ehPendente(a);
-    const badge = a.ativo
-      ? '<span class="badge badge--ok badge--dot">Ativo</span>'
-      : pendente
-        ? '<span class="badge badge--aviso badge--dot">Pendente</span>'
-        : '<span class="badge badge--erro badge--dot">Inativo</span>';
-    // Pendente não usa "Excluir" aqui: apagar o registro removeria o
-    // bloqueio de corrigir_prova e liberaria a prova sem aprovação.
-    const acoes = pendente
-      ? `<button class="btn btn--success btn--sm" data-aprovar-aluno="${a.id}">Aprovar</button>
-         <button class="btn btn--ghost btn--sm" data-recusar-aluno="${a.id}">Recusar</button>`
-      : `<button class="btn btn--ghost btn--sm" data-editar-aluno="${a.id}">Editar</button>
-         <button class="btn btn--danger btn--sm" data-excluir-aluno="${a.id}">Excluir</button>`;
+  const corpo = filtradas.map((l) => {
+    const dono = l.conta || l.cadastro;
+    const chave = dono.email_normalizado || String(dono.email || "").trim().toLowerCase();
+
+    const papel = !l.conta
+      ? '<span class="muted small">Sem conta</span>'
+      : l.conta.role === "admin"
+        ? '<span class="badge-role badge-role--admin">Administrador</span>'
+        : '<span class="badge-role">Aluno</span>';
+
+    // Admin não depende de alunos_cadastrados para nada; mostra "—".
+    const status = l.conta?.role === "admin"
+      ? '<span class="muted">—</span>'
+      : !l.cadastro
+        ? '<span class="badge badge--ok badge--dot">Ativo</span>'
+        : l.cadastro.ativo
+          ? '<span class="badge badge--ok badge--dot">Ativo</span>'
+          : ehPendente(l.cadastro)
+            ? '<span class="badge badge--aviso badge--dot">Pendente</span>'
+            : '<span class="badge badge--erro badge--dot">Inativo</span>';
+
+    const acoes = [];
+    acoes.push(`<button class="btn btn--ghost btn--sm" data-editar="${escaparHtml(chave)}">Editar</button>`);
+
+    if (l.cadastro && ehPendente(l.cadastro)) {
+      acoes.push(`<button class="btn btn--success btn--sm" data-aprovar-linha="${l.cadastro.id}">Aprovar</button>`);
+      acoes.push(`<button class="btn btn--ghost btn--sm" data-recusar-linha="${l.cadastro.id}">Recusar</button>`);
+    } else if (l.conta) {
+      if (l.conta.id === cad.perfil.id) {
+        acoes.push('<span class="muted small">Conta atual</span>');
+      } else if (l.conta.role === "aluno") {
+        acoes.push(`<button class="btn btn--primary btn--sm" data-promover="${l.conta.id}">Tornar admin</button>`);
+      } else {
+        acoes.push(`<button class="btn btn--ghost btn--sm" data-rebaixar="${l.conta.id}">Tornar aluno</button>`);
+      }
+      if (l.conta.role === "aluno" && l.cadastro) {
+        acoes.push(l.cadastro.ativo
+          ? `<button class="btn btn--danger btn--sm" data-desativar="${l.cadastro.id}">Desativar</button>`
+          : `<button class="btn btn--success btn--sm" data-reativar="${l.cadastro.id}">Reativar</button>`);
+      }
+    }
+
     return `<tr>
-      <td><b>${escaparHtml(a.nome || "—")}</b></td>
-      <td class="nowrap">${escaparHtml(a.matricula || "—")}</td>
-      <td>${escaparHtml(a.email || "—")}</td>
-      <td>${badge}</td>
-      <td class="nowrap">${fmtData(a.criado_em)}</td>
-      <td class="nowrap">${acoes}</td>
+      <td><b>${escaparHtml(dono.nome || "—")}</b></td>
+      <td class="nowrap">${escaparHtml(dono.matricula || "—")}</td>
+      <td>${escaparHtml(dono.email || "—")}</td>
+      <td>${escaparHtml(dono.empresa || "—")}</td>
+      <td>${papel}</td>
+      <td>${status}</td>
+      <td class="nowrap">${acoes.join(" ")}</td>
     </tr>`;
   }).join("");
 
   host.innerHTML = `
-    <p class="muted small" style="margin:.2rem 0 .6rem">${linhas.length} aluno(s)</p>
+    <p class="muted small" style="margin:.2rem 0 .6rem">${filtradas.length} conta(s)/cadastro(s)</p>
     <div class="tabela-wrap">
       <table class="tabela">
         <thead><tr>
-          <th>Aluno</th><th>Matrícula</th><th>E-mail</th><th>Status</th><th>Cadastrado em</th><th>Ações</th>
+          <th>Nome</th><th>Matrícula</th><th>E-mail</th><th>Empresa</th><th>Perfil</th><th>Status</th><th>Ações</th>
         </tr></thead>
         <tbody>${corpo}</tbody>
       </table>
     </div>`;
 
-  host.querySelectorAll("[data-editar-aluno]").forEach((b) =>
-    b.addEventListener("click", () => preencherFormulario(b.dataset.editarAluno)));
-  host.querySelectorAll("[data-excluir-aluno]").forEach((b) =>
-    b.addEventListener("click", () => excluirAluno(b.dataset.excluirAluno)));
-  host.querySelectorAll("[data-aprovar-aluno]").forEach((b) =>
-    b.addEventListener("click", () => aprovarAluno(b.dataset.aprovarAluno)));
-  host.querySelectorAll("[data-recusar-aluno]").forEach((b) =>
-    b.addEventListener("click", () => recusarAluno(b.dataset.recusarAluno)));
+  host.querySelectorAll("[data-editar]").forEach((b) =>
+    b.addEventListener("click", () => preencherFormulario(b.dataset.editar)));
+  host.querySelectorAll("[data-promover]").forEach((b) =>
+    b.addEventListener("click", () => mudarPapel(b.dataset.promover, "admin")));
+  host.querySelectorAll("[data-rebaixar]").forEach((b) =>
+    b.addEventListener("click", () => mudarPapel(b.dataset.rebaixar, "aluno")));
+  host.querySelectorAll("[data-aprovar-linha]").forEach((b) =>
+    b.addEventListener("click", () => aprovarSolicitacao(b.dataset.aprovarLinha)));
+  host.querySelectorAll("[data-recusar-linha]").forEach((b) =>
+    b.addEventListener("click", () => recusarSolicitacao(b.dataset.recusarLinha)));
+  host.querySelectorAll("[data-desativar]").forEach((b) =>
+    b.addEventListener("click", () => mudarStatusCadastro(b.dataset.desativar, false)));
+  host.querySelectorAll("[data-reativar]").forEach((b) =>
+    b.addEventListener("click", () => mudarStatusCadastro(b.dataset.reativar, true)));
 }
 
-async function salvarAluno(e) {
+async function mudarPapel(contaId, novoRole) {
+  const conta = cad.contas.find((c) => c.id === contaId);
+  if (!conta) return;
+  if (contaId === cad.perfil.id && novoRole !== "admin") {
+    alert("Você não pode rebaixar a própria conta enquanto está logado como administrador.");
+    return;
+  }
+  const frase = novoRole === "admin"
+    ? `Tornar ${conta.nome || conta.email} administrador? Essa conta passa a gerenciar provas, contas e aprovações.`
+    : `Voltar ${conta.nome || conta.email} para o perfil de aluno?`;
+  if (!confirm(frase)) return;
+
+  const { error } = await sb.from("profiles")
+    .update({ role: novoRole })
+    .eq("id", contaId)
+    .eq("area", cad.perfil.area);
+  if (error) { alert("Não consegui alterar o papel: " + error.message); return; }
+  await recarregar();
+}
+
+async function mudarStatusCadastro(cadastroId, ativo) {
+  const c = cad.cadastros.find((x) => x.id === cadastroId);
+  if (!c) return;
+  if (!ativo && !confirm(`Desativar ${c.nome || c.email}? Ele não conseguirá entrar nem registrar provas até ser reativado.`)) return;
+  const { error } = await sb.from("alunos_cadastrados")
+    .update({ ativo, criado_por: c.criado_por || cad.perfil.id })
+    .eq("id", cadastroId);
+  if (error) { alert("Erro ao alterar o status: " + error.message); return; }
+  await recarregar();
+}
+
+// ------------------------------------------------------------- formulário
+async function salvarConta(e) {
   e.preventDefault();
   const form = e.currentTarget;
   const btn = form.querySelector("[data-btn-salvar]");
   const status = form.querySelector("[data-status-form]");
+  const editando = Boolean(cad.editandoEmail);
+
   const nome = form.nome.value.trim();
   const matricula = form.matricula.value.trim() || null;
   const email = form.email.value.trim();
-  const emailNormalizado = normalizarEmail(email);
+  const empresa = form.empresa.value.trim() || null;
   const ativo = form.ativo.value === "true";
   const senha = form.senha.value || "";
   const senha2 = form.senha2.value || "";
-  const editando = Boolean(cad.editandoId);
 
-  if (!nome) { status.textContent = "Informe o nome do aluno."; form.nome.focus(); return; }
-  if (!emailNormalizado || !emailNormalizado.includes("@")) { status.textContent = "Informe um e-mail válido."; form.email.focus(); return; }
-  if (!editando && senha.length < 6) { status.textContent = "Informe uma senha inicial com pelo menos 6 caracteres."; form.senha.focus(); return; }
+  if (!nome) { status.textContent = "Informe o nome."; form.nome.focus(); return; }
+  if (!email || !email.includes("@")) { status.textContent = "Informe um e-mail válido."; form.email.focus(); return; }
+  if (!editando && senha.length < 6) { status.textContent = "Para conta nova, informe uma senha inicial com pelo menos 6 caracteres."; form.senha.focus(); return; }
   if (senha && senha.length < 6) { status.textContent = "A senha precisa ter pelo menos 6 caracteres."; form.senha.focus(); return; }
   if (senha !== senha2) { status.textContent = "As senhas não conferem."; form.senha2.focus(); return; }
 
-  travarBtn(btn, true, editando ? "Salvando…" : "Criando acesso…");
+  travarBtn(btn, true, editando ? "Salvando…" : "Criando conta…");
   status.textContent = "";
 
-  const payload = {
+  const resposta = await chamarFuncaoAdminCriarAluno({
     area: cad.perfil.area,
     nome,
     matricula,
     email,
+    empresa,
     senha: senha || null,
     ativo,
-  };
+  });
 
-  const resposta = await chamarFuncaoAdminCriarAluno(payload);
   if (resposta.error) {
     console.error(resposta.error);
     status.textContent = resposta.error;
-    travarBtn(btn, false, editando ? "Salvar edição" : "Salvar aluno e criar acesso");
+    travarBtn(btn, false, editando ? "Salvar alterações" : "Criar conta");
     return;
   }
 
-  await carregarAlunos();
-  renderCadastroAlunos();
+  limparFormulario();
+  status.textContent = resposta.data?.message || "Conta salva com sucesso.";
+  await recarregar();
 }
 
 async function chamarFuncaoAdminCriarAluno(payload) {
   try {
     const { data, error } = await sb.functions.invoke("admin-criar-aluno", { body: payload });
-
     if (error) {
       let detalhe = error.message || "Erro ao chamar a função admin-criar-aluno.";
       if (error.context && typeof error.context.json === "function") {
@@ -344,69 +460,67 @@ async function chamarFuncaoAdminCriarAluno(payload) {
       }
       return { error: detalhe };
     }
-
     if (!data || data.ok !== true) {
       return { error: data?.error || "A função admin-criar-aluno não confirmou o cadastro." };
     }
-
     return { data };
   } catch (err) {
     return {
       error:
-        "Não consegui criar o acesso no Supabase Auth. Confira se a Edge Function admin-criar-aluno foi publicada no Supabase. Detalhe: " +
+        "Não consegui acessar o Supabase Auth. Confira se a Edge Function admin-criar-aluno está publicada. Detalhe: " +
         (err?.message || String(err)),
     };
   }
 }
 
-function preencherFormulario(id) {
-  const aluno = cad.alunos.find((a) => a.id === id);
-  if (!aluno) return;
-  cad.editandoId = id;
+function preencherFormulario(chaveEmail) {
+  const conta = cad.contas.find(
+    (p) => (p.email_normalizado || String(p.email || "").trim().toLowerCase()) === chaveEmail
+  );
+  const cadastro = cad.cadastros.find((c) => c.email_normalizado === chaveEmail);
+  const dono = conta || cadastro;
+  if (!dono) return;
+
+  cad.editandoEmail = chaveEmail;
   const host = document.querySelector("[data-cadastro-alunos]");
-  const form = host.querySelector("[data-form-cadastro-aluno]");
-  host.querySelector("[data-form-titulo]").textContent = "Editar aluno";
-  form.nome.value = aluno.nome || "";
-  form.matricula.value = aluno.matricula || "";
-  form.email.value = aluno.email || "";
+  const form = host.querySelector("[data-form-conta]");
+  host.querySelector("[data-form-titulo]").textContent = "Editar conta";
+  host.querySelector("[data-form-descricao]").innerHTML =
+    `Alterando os dados de <b>${escaparHtml(dono.nome || dono.email)}</b>. O papel (aluno/administrador) muda pelos botões da tabela.`;
+  form.nome.value = dono.nome || "";
+  form.matricula.value = dono.matricula || "";
+  form.email.value = dono.email || "";
   form.email.readOnly = true;
+  form.empresa.value = dono.empresa || cadastro?.empresa || "";
+  form.ativo.value = (cadastro ? cadastro.ativo : true) ? "true" : "false";
   form.senha.value = "";
   form.senha2.value = "";
-  form.ativo.value = aluno.ativo ? "true" : "false";
-  host.querySelector("[data-hint-email]").textContent = "Para trocar o e-mail, exclua este cadastro e crie outro.";
+  host.querySelector("[data-hint-email]").textContent = "Para trocar o e-mail, crie uma conta nova.";
   host.querySelector("[data-hint-senha]").textContent = "Deixe em branco para manter a senha atual. Preencha para redefinir.";
-  host.querySelector("[data-btn-salvar]").textContent = "Salvar edição";
+  host.querySelector("[data-btn-salvar]").textContent = "Salvar alterações";
   host.querySelector("[data-btn-cancelar]").classList.remove("hidden");
   form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function limparFormulario() {
-  cad.editandoId = null;
+  cad.editandoEmail = null;
   const host = document.querySelector("[data-cadastro-alunos]");
-  const form = host.querySelector("[data-form-cadastro-aluno]");
+  const form = host.querySelector("[data-form-conta]");
   form.reset();
   form.email.readOnly = false;
-  host.querySelector("[data-form-titulo]").textContent = "Novo aluno";
-  host.querySelector("[data-btn-salvar]").textContent = "Salvar aluno e criar acesso";
+  host.querySelector("[data-form-titulo]").textContent = "Criar conta de aluno";
+  host.querySelector("[data-form-descricao]").innerHTML =
+    "Cadastre um aluno do zero com senha inicial: ele já sai aprovado e pode entrar direto pela aba <b>Entrar</b> do login, sem passar pela solicitação.";
+  host.querySelector("[data-btn-salvar]").textContent = "Criar conta";
   host.querySelector("[data-btn-cancelar]").classList.add("hidden");
   host.querySelector("[data-status-form]").textContent = "";
   host.querySelector("[data-hint-email]").textContent = "";
-  host.querySelector("[data-hint-senha]").textContent = "Obrigatória para novo aluno. Em edição, preencha apenas se quiser trocar a senha.";
+  host.querySelector("[data-hint-senha]").textContent = "Obrigatória para conta nova. Em edição, preencha apenas para trocar a senha.";
 }
 
-async function excluirAluno(id) {
-  const aluno = cad.alunos.find((a) => a.id === id);
-  if (!aluno) return;
-  const ok = confirm(`Excluir o cadastro de ${aluno.nome}? Se ele já criou acesso, o usuário do Supabase Auth não será apagado; isso apenas remove o registro da lista de alunos autorizados.`);
-  if (!ok) return;
-  const { error } = await sb.from("alunos_cadastrados").delete().eq("id", id);
-  if (error) { alert("Erro ao excluir: " + error.message); return; }
-  await carregarAlunos();
-  renderCadastroAlunos();
-}
-
-function normalizarEmail(email) {
-  return String(email || "").trim().toLowerCase();
+async function recarregar() {
+  await carregarDados();
+  render();
 }
 
 function travarBtn(btn, on, txt) {
