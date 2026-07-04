@@ -255,8 +255,10 @@ as $$
   )
 $$;
 
--- Gatilho de novo usuário: exige cadastro prévio ativo. Aproveita
--- nome/matrícula do cadastro feito pelo administrador.
+-- Gatilho de novo usuário: primeiro acesso é aberto a qualquer e-mail.
+-- Quem já foi cadastrado (e explicitamente desativado) pelo administrador
+-- continua bloqueado; quem é novo entra automaticamente como PENDENTE
+-- (inativo) em alunos_cadastrados até o administrador aprovar.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -275,18 +277,32 @@ begin
   select * into v_cad
   from public.alunos_cadastrados c
   where c.area = area_informada
-    and c.email_normalizado = lower(trim(new.email))
-    and c.ativo = true;
+    and c.email_normalizado = lower(trim(new.email));
 
-  if not found then
-    raise exception 'Cadastro não autorizado. Peça ao administrador para cadastrar seu e-mail antes do primeiro acesso.';
+  if found and not v_cad.ativo then
+    raise exception 'Seu cadastro está inativo. Procure o administrador.';
   end if;
 
-  insert into public.profiles (id, nome, matricula, email, email_normalizado, area, role)
+  if not found then
+    insert into public.alunos_cadastrados
+      (area, nome, matricula, email, email_normalizado, ativo)
+    values (
+      area_informada,
+      coalesce(nullif(new.raw_user_meta_data ->> 'nome', ''), split_part(new.email, '@', 1)),
+      nullif(new.raw_user_meta_data ->> 'matricula', ''),
+      new.email,
+      lower(trim(new.email)),
+      false
+    )
+    on conflict (area, email_normalizado) do nothing;
+  end if;
+
+  insert into public.profiles (id, nome, matricula, empresa, email, email_normalizado, area, role)
   values (
     new.id,
     coalesce(nullif(new.raw_user_meta_data ->> 'nome', ''), nullif(v_cad.nome, ''), split_part(new.email, '@', 1)),
     coalesce(nullif(new.raw_user_meta_data ->> 'matricula', ''), v_cad.matricula),
+    nullif(new.raw_user_meta_data ->> 'empresa', ''),
     new.email,
     lower(trim(new.email)),
     area_informada,

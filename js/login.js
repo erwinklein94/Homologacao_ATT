@@ -143,15 +143,16 @@ function ligarFormAlunoCriar(areaLogin) {
   const f = document.querySelector("[data-form-aluno-criar]");
   const preview = document.querySelector("[data-cadastro-preview]");
 
-  // O primeiro acesso SÓ funciona para e-mail previamente cadastrado (e ativo)
-  // pelo administrador. Esta consulta antecipa a resposta para o aluno; a
-  // validação definitiva acontece no servidor (gatilho handle_new_user).
+  // O primeiro acesso é aberto a qualquer e-mail. Esta consulta só antecipa
+  // nome/matrícula quando o administrador já cadastrou o aluno antes;
+  // quando não encontra, o cadastro é criado como pendente no servidor
+  // (gatilho handle_new_user) e liberado depois que o administrador aprovar.
   if (preview && f.email) {
     let t = null;
     f.email.addEventListener("input", () => {
       clearTimeout(t);
       const email = f.email.value.trim();
-      preview.textContent = "Digite o e-mail cadastrado pelo administrador.";
+      preview.textContent = "Se seu e-mail já estiver cadastrado, preenchemos seu nome automaticamente.";
       if (!email || !email.includes("@")) return;
       t = setTimeout(async () => {
         const { data, error } = await buscarCadastroAluno(email, areaLogin);
@@ -165,7 +166,7 @@ function ligarFormAlunoCriar(areaLogin) {
           if (f.elements.nome && !f.elements.nome.value && data.nome) f.elements.nome.value = data.nome;
           if (f.elements.matricula && !f.elements.matricula.value && data.matricula) f.elements.matricula.value = data.matricula;
         } else {
-          preview.textContent = "E-mail não encontrado no cadastro. Peça ao administrador para cadastrar seu e-mail antes do primeiro acesso.";
+          preview.textContent = "E-mail novo. Seu acesso será criado, mas fica pendente de aprovação do administrador até liberar as provas.";
         }
       }, 450);
     });
@@ -184,21 +185,12 @@ function ligarFormAlunoCriar(areaLogin) {
     travar(btn, true, "Criando acesso…");
 
     const email = f.email.value.trim().toLowerCase();
+    // O primeiro acesso é aberto: se a consulta falhar ou não encontrar
+    // cadastro prévio, seguimos mesmo assim — quem é novo vira pendente
+    // no servidor (gatilho handle_new_user) até o administrador aprovar.
     const cadastro = await buscarCadastroAluno(email, areaLogin);
     if (cadastro.error) {
-      // Falha FECHADA: sem conseguir consultar o cadastro, não seguimos.
-      console.error("Cadastro de aluno não consultado:", cadastro.error.message || cadastro.error);
-      msg("[data-msg-aluno-criar]", "erro",
-        "Não consegui consultar o cadastro de alunos. Verifique a conexão e tente novamente. Se persistir, avise o administrador (o SQL sql/atualizacao-seguranca.sql precisa estar aplicado).");
-      travar(btn, false, "Criar primeiro acesso");
-      return;
-    }
-    if (!cadastro.data) {
-      // A validação definitiva é no servidor; aqui evitamos uma tentativa inútil.
-      msg("[data-msg-aluno-criar]", "erro",
-        "Seu e-mail ainda não foi cadastrado pelo administrador. Peça o cadastro antes de criar o primeiro acesso.");
-      travar(btn, false, "Criar primeiro acesso");
-      return;
+      console.warn("Cadastro de aluno não consultado:", cadastro.error.message || cadastro.error);
     }
 
     const nomeDigitado = (f.elements.nome?.value || "").trim();
@@ -233,6 +225,12 @@ function ligarFormAlunoCriar(areaLogin) {
       return entrarComEmailExistente(email, f.senha.value, dadosPerfil, areaLogin, btn);
     }
 
+    // Cadastro sem registro prévio do administrador: vira pendente no
+    // servidor (gatilho handle_new_user) até ele aprovar em alunos_cadastrados.
+    const avisoPendente = cadastro.data
+      ? ""
+      : " Como seu e-mail ainda não estava cadastrado, seu acesso fica pendente de aprovação do administrador até liberar as provas.";
+
     if (data.session) {
       // Confirmação de e-mail desativada: já está logado.
       const perfilArea = window.garantirPerfilArea
@@ -244,12 +242,13 @@ function ligarFormAlunoCriar(areaLogin) {
         travar(btn, false, "Criar primeiro acesso");
         return;
       }
+      msg("[data-msg-aluno-criar]", "ok", "Acesso criado!" + avisoPendente);
       const ok = await rotaPorPapel({ areaEsperada: areaLogin, roleEsperada: "aluno", msgSelector: "[data-msg-aluno-criar]" });
       if (!ok) travar(btn, false, "Criar primeiro acesso");
     } else {
       // Confirmação de e-mail ativada: precisa confirmar antes de entrar.
       msg("[data-msg-aluno-criar]", "ok",
-        "Acesso criado! Se o Supabase pedir confirmação, confirme pelo e-mail e depois entre na aba “Entrar”.");
+        "Acesso criado! Se o Supabase pedir confirmação, confirme pelo e-mail e depois entre na aba “Entrar”." + avisoPendente);
       travar(btn, false, "Criar primeiro acesso");
     }
   });

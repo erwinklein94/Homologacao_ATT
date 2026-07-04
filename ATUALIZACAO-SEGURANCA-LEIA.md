@@ -23,8 +23,11 @@ verificável em lugar nenhum.
   são calculados no Postgres. Insert direto em `tentativas` foi bloqueado.
 - `questoes_da_prova` — devolve as questões **sem** `correta`/`justificativa`;
   o select direto na tabela `questoes` ficou restrito ao administrador.
-- `handle_new_user` — signup só para e-mail cadastrado **e ativo** em
-  `alunos_cadastrados` (validação no servidor, não dá para burlar).
+- `handle_new_user` — **[ATUALIZADO]** primeiro acesso agora é aberto a
+  qualquer e-mail. Quem não tem cadastro prévio entra automaticamente em
+  `alunos_cadastrados` como **pendente (inativo)** até o administrador
+  aprovar; e-mail que o administrador marcou como inativo continua bloqueado
+  no servidor (validação não dá para burlar).
 - Aluno com cadastro **inativo** não registra prova.
 - Nota gravada sempre com **1 casa decimal** (notas antigas normalizadas).
 - `codigo_cert` virou coluna real + RPC pública `verificar_certificado`.
@@ -34,8 +37,9 @@ verificável em lugar nenhum.
 - `js/prova.js` — usa as duas RPCs; embaralha também as **alternativas**;
   rascunho no `localStorage` (F5/queda de rede não perde a prova; banner
   "Continuar prova"); instrutor travado na lista de administradores.
-- `js/login.js` + `login.html` — primeiro acesso exige cadastro (falha
-  fechada); botão **Esqueci minha senha** nos dois perfis.
+- `js/login.js` + `login.html` — primeiro acesso aberto a qualquer e-mail,
+  com aviso de pendência quando não há cadastro prévio; botão
+  **Esqueci minha senha** nos dois perfis.
 - `redefinir-senha.html` — página do link de redefinição.
 - `verificar.html` — validação pública do código HSA-XXXXXXXX (aceita
   `?codigo=` na URL; o PDF do certificado agora imprime esse link).
