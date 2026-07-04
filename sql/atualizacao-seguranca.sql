@@ -282,15 +282,19 @@ begin
     raise exception 'Cadastro não autorizado. Peça ao administrador para cadastrar seu e-mail antes do primeiro acesso.';
   end if;
 
-  insert into public.profiles (id, nome, matricula, area, role)
+  insert into public.profiles (id, nome, matricula, email, email_normalizado, area, role)
   values (
     new.id,
     coalesce(nullif(new.raw_user_meta_data ->> 'nome', ''), nullif(v_cad.nome, ''), split_part(new.email, '@', 1)),
     coalesce(nullif(new.raw_user_meta_data ->> 'matricula', ''), v_cad.matricula),
+    new.email,
+    lower(trim(new.email)),
     area_informada,
     'aluno'
   )
-  on conflict (id, area) do nothing;
+  on conflict (id, area) do update set
+    email = coalesce(excluded.email, public.profiles.email),
+    email_normalizado = coalesce(excluded.email_normalizado, public.profiles.email_normalizado);
 
   return new;
 end;

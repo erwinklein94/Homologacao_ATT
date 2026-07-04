@@ -183,6 +183,8 @@ serve(async (req) => {
         id: userId,
         nome,
         matricula,
+        email,
+        email_normalizado: emailNormalizado,
         area,
         role: "aluno",
       }, { onConflict: "id,area" });
