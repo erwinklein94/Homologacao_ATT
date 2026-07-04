@@ -1,80 +1,19 @@
 -- =====================================================================
--- Permitir primeiro acesso criado pelo próprio aluno
--- Rode no Supabase > SQL Editor se o primeiro acesso criar a conta,
--- mas aparecer erro de perfil/permission denied em public.profiles.
--- Atualizado para salvar e-mail e empresa no perfil.
+-- [SUBSTITUÍDO] Permitir primeiro acesso criado pelo próprio aluno
+--
+-- Este script foi SUBSTITUÍDO por sql/atualizacao-seguranca.sql.
+--
+-- A versão antiga deste arquivo recriava um gatilho que permitia QUALQUER
+-- e-mail criar o primeiro acesso (o site é público no GitHub Pages, então
+-- qualquer pessoa da internet conseguia criar conta de aluno).
+--
+-- A regra atual é: o primeiro acesso só funciona para e-mails cadastrados
+-- (e ativos) pelo administrador em public.alunos_cadastrados. O gatilho
+-- handle_new_user com essa validação está em sql/atualizacao-seguranca.sql.
+--
+-- NÃO rode a versão antiga deste arquivo. Se você precisa reparar o
+-- primeiro acesso, rode (ou re-rode) sql/atualizacao-seguranca.sql —
+-- ele é idempotente e pode ser executado mais de uma vez sem problema.
 -- =====================================================================
 
-alter table public.profiles add column if not exists email text;
-alter table public.profiles add column if not exists email_normalizado text;
-alter table public.profiles add column if not exists empresa text;
-
-grant usage on schema public to anon, authenticated;
-grant select, insert, update on public.profiles to authenticated;
-
-alter table public.profiles enable row level security;
-
-drop policy if exists profiles_select_area on public.profiles;
-create policy profiles_select_area on public.profiles
-  for select using (
-    id = auth.uid()
-    or (role = 'admin' and public.tem_acesso_area(area))
-    or public.is_admin_area(area)
-  );
-
-drop policy if exists profiles_insert_self on public.profiles;
-create policy profiles_insert_self on public.profiles
-  for insert to authenticated
-  with check (
-    id = auth.uid()
-    and role = 'aluno'
-    and area in ('solda', 'alivio_tensao')
-  );
-
-drop policy if exists profiles_update_own on public.profiles;
-create policy profiles_update_own on public.profiles
-  for update to authenticated
-  using (id = auth.uid() and role = 'aluno')
-  with check (id = auth.uid() and role = 'aluno' and area in ('solda', 'alivio_tensao'));
-
--- Gatilho para todo novo usuário do Auth virar aluno da área enviada pelo site.
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  area_informada text;
-begin
-  area_informada := coalesce(nullif(new.raw_user_meta_data ->> 'area', ''), 'alivio_tensao');
-  if area_informada not in ('solda', 'alivio_tensao') then
-    area_informada := 'alivio_tensao';
-  end if;
-
-  insert into public.profiles (id, nome, matricula, email, email_normalizado, empresa, area, role)
-  values (
-    new.id,
-    coalesce(nullif(new.raw_user_meta_data ->> 'nome', ''), split_part(new.email, '@', 1)),
-    new.raw_user_meta_data ->> 'matricula',
-    new.email,
-    lower(trim(new.email)),
-    nullif(new.raw_user_meta_data ->> 'empresa', ''),
-    area_informada,
-    'aluno'
-  )
-  on conflict (id, area) do update set
-    nome = coalesce(nullif(excluded.nome, ''), public.profiles.nome),
-    matricula = coalesce(excluded.matricula, public.profiles.matricula),
-    email = coalesce(excluded.email, public.profiles.email),
-    email_normalizado = coalesce(excluded.email_normalizado, public.profiles.email_normalizado),
-    empresa = coalesce(excluded.empresa, public.profiles.empresa);
-
-  return new;
-end;
-$$;
-
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
+select 'Use sql/atualizacao-seguranca.sql — este script foi substituído.' as aviso;

@@ -5,8 +5,10 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// Restrinja a origem em produção: no Supabase, em Edge Functions > Secrets,
+// defina ALLOWED_ORIGIN com a URL do site (ex.: https://usuario.github.io).
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
@@ -68,7 +70,6 @@ serve(async (req) => {
     const area = body.area === "solda" ? "solda" : "alivio_tensao";
     const nome = limparTexto(body.nome);
     const matricula = limparTexto(body.matricula) || null;
-    const empresa = limparTexto(body.empresa) || null;
     const email = limparTexto(body.email);
     const emailNormalizado = normalizarEmail(email);
     const senha = typeof body.senha === "string" ? body.senha : "";
@@ -77,9 +78,6 @@ serve(async (req) => {
     if (!nome) return json({ ok: false, error: "Informe o nome do aluno." }, 400);
     if (!emailNormalizado || !emailNormalizado.includes("@")) {
       return json({ ok: false, error: "Informe um e-mail válido." }, 400);
-    }
-    if (!empresa) {
-      return json({ ok: false, error: "Informe a empresa do aluno." }, 400);
     }
     if (senha && senha.length < 6) {
       return json({ ok: false, error: "A senha precisa ter pelo menos 6 caracteres." }, 400);
@@ -100,9 +98,39 @@ serve(async (req) => {
       return json({ ok: false, error: "Apenas administrador desta área pode cadastrar aluno com senha." }, 403);
     }
 
+    // IMPORTANTE: grava o cadastro ANTES de criar o usuário no Auth.
+    // O gatilho handle_new_user (sql/atualizacao-seguranca.sql) só permite
+    // criar usuário cujo e-mail já esteja cadastrado e ativo nesta lista.
+    const { error: erroCadastro } = await supabaseAdmin
+      .from("alunos_cadastrados")
+      .upsert({
+        area,
+        nome,
+        matricula,
+        email,
+        email_normalizado: emailNormalizado,
+        ativo,
+        criado_por: adminLogado.id,
+        atualizado_em: new Date().toISOString(),
+      }, { onConflict: "area,email_normalizado" });
+
+    if (erroCadastro) {
+      return json({ ok: false, error: "Falhou ao salvar a lista de alunos: " + erroCadastro.message }, 500);
+    }
+
     const usuarioExistente = await buscarUsuarioPorEmail(supabaseAdmin, emailNormalizado);
     let usuarioAuth = usuarioExistente;
     let usuarioFoiCriado = false;
+
+    // Cadastro inativo: mantém a lista atualizada, mas não cria acesso novo.
+    if (!usuarioExistente && !ativo) {
+      return json({
+        ok: true,
+        created: false,
+        email: emailNormalizado,
+        message: "Aluno salvo como INATIVO. O acesso no Auth só será criado quando o cadastro estiver ativo.",
+      });
+    }
 
     if (!usuarioExistente) {
       if (senha.length < 6) {
@@ -113,7 +141,7 @@ serve(async (req) => {
         email: emailNormalizado,
         password: senha,
         email_confirm: true,
-        user_metadata: { nome, matricula, empresa, area },
+        user_metadata: { nome, matricula, area },
       });
 
       if (erroCriar || !novo?.user) {
@@ -129,7 +157,6 @@ serve(async (req) => {
           ...(usuarioExistente.user_metadata || {}),
           nome,
           matricula,
-          empresa,
           area,
         },
       };
@@ -150,52 +177,18 @@ serve(async (req) => {
 
     const userId = usuarioAuth.id;
 
-    const { data: perfilExistente, error: erroPerfilExistente } = await supabaseAdmin
-      .from("profiles")
-      .select("role")
-      .eq("id", userId)
-      .eq("area", area)
-      .maybeSingle();
-
-    if (erroPerfilExistente) {
-      return json({ ok: false, error: "Usuário criado/atualizado no Auth, mas falhou ao consultar profile existente: " + erroPerfilExistente.message }, 500);
-    }
-
-    const roleFinal = perfilExistente?.role === "admin" ? "admin" : "aluno";
-
     const { error: erroProfile } = await supabaseAdmin
       .from("profiles")
       .upsert({
         id: userId,
         nome,
         matricula,
-        email: emailNormalizado,
-        email_normalizado: emailNormalizado,
-        empresa,
         area,
-        role: roleFinal,
+        role: "aluno",
       }, { onConflict: "id,area" });
 
     if (erroProfile) {
       return json({ ok: false, error: "Usuário criado/atualizado no Auth, mas falhou ao salvar profile: " + erroProfile.message }, 500);
-    }
-
-    const { error: erroCadastro } = await supabaseAdmin
-      .from("alunos_cadastrados")
-      .upsert({
-        area,
-        nome,
-        matricula,
-        email,
-        email_normalizado: emailNormalizado,
-        empresa,
-        ativo,
-        criado_por: adminLogado.id,
-        atualizado_em: new Date().toISOString(),
-      }, { onConflict: "area,email_normalizado" });
-
-    if (erroCadastro) {
-      return json({ ok: false, error: "Usuário criado/atualizado, mas falhou ao salvar lista de alunos: " + erroCadastro.message }, 500);
     }
 
     return json({

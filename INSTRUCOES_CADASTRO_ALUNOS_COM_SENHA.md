@@ -1,6 +1,6 @@
 # Cadastro de alunos com senha inicial
 
-Nesta versão, a página **Cadastro de contas** permite que o administrador informe:
+Nesta versão, a página **Cadastro de Alunos** permite que o administrador informe:
 
 - nome;
 - matrícula;
@@ -49,8 +49,8 @@ O `project-ref` acima é o do seu projeto mostrado na URL do Supabase.
 Depois de publicar a function, suba estes arquivos no GitHub:
 
 ```text
-cadastro-contas.html
-js/cadastro-contas.js
+cadastro-alunos.html
+js/cadastro-alunos.js
 supabase/functions/admin-criar-aluno/index.ts
 ```
 
@@ -59,7 +59,7 @@ A pasta `supabase/functions` não é usada pelo GitHub Pages, mas deve ficar no 
 ## Como testar
 
 1. Entre no site como administrador.
-2. Abra **Cadastro de contas**.
+2. Abra **Cadastro de Alunos**.
 3. Cadastre um aluno com e-mail e senha inicial.
 4. Saia da conta admin.
 5. Entre como aluno usando o e-mail e a senha cadastrados.

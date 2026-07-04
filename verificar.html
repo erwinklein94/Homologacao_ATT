@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verificar certificado · Homologação Alívio de Tensão · Rumo</title>
+  <meta name="description" content="Validação pública de certificados de homologação em Alívio de Tensão." />
+  <link rel="icon" href="assets/favicon.png" />
+  <link rel="stylesheet" href="css/rumo.css?v=20260704-seguranca-v1" />
+</head>
+<body>
+  <div class="login-shell">
+    <main class="login-hero">
+      <div class="login-box" style="max-width:640px">
+        <section class="login-acesso" aria-label="Verificação de certificado">
+          <div data-config-aviso></div>
+          <section class="login-card">
+            <div class="login-card__topo">
+              <div class="login-card__icon" aria-hidden="true">✅</div>
+              <div>
+                <h2>Verificar certificado</h2>
+                <p class="muted">Digite o código impresso no certificado (ex.: HSA-1A2B3C4D) para confirmar a autenticidade.</p>
+              </div>
+            </div>
+
+            <form data-form-verificar novalidate>
+              <div class="field">
+                <label for="vc-codigo">Código de verificação</label>
+                <input id="vc-codigo" class="input" type="text" name="codigo" required placeholder="HSA-XXXXXXXX" autocomplete="off" />
+              </div>
+              <button class="btn btn--primary btn--block" type="submit">Verificar</button>
+              <div class="hidden" data-msg-verificar></div>
+            </form>
+
+            <div data-resultado-verificar style="margin-top:1rem"></div>
+
+            <p class="muted small" style="margin-top:1rem">
+              <a href="login.html">← Voltar ao login</a>
+            </p>
+          </section>
+        </section>
+      </div>
+    </main>
+    <footer class="login-foot">Rumo · Homologação Alívio de Tensão — Validação pública de certificados</footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>if(!window.supabase){document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');}</script>
+  <script src="js/config.js?v=20260704-seguranca-v1"></script>
+  <script src="js/app.js?v=20260704-seguranca-v1"></script>
+  <script src="js/verificar.js?v=20260704-seguranca-v1"></script>
+</body>
+</html>

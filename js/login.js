@@ -21,6 +21,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   ligarFormAdmin(areaLogin);
   ligarFormAlunoLogin(areaLogin);
   ligarFormAlunoCriar(areaLogin);
+  ligarEsqueciSenha();
 
   // Se já houver sessão ativa, tenta ir direto para a área certa.
   const sessao = await getSessao();
@@ -142,29 +143,29 @@ function ligarFormAlunoCriar(areaLogin) {
   const f = document.querySelector("[data-form-aluno-criar]");
   const preview = document.querySelector("[data-cadastro-preview]");
 
-  // Consulta o cadastro feito pelo administrador apenas para aproveitar nome e matrícula.
-  // Se não existir cadastro prévio, o aluno ainda pode criar o próprio primeiro acesso.
+  // O primeiro acesso SÓ funciona para e-mail previamente cadastrado (e ativo)
+  // pelo administrador. Esta consulta antecipa a resposta para o aluno; a
+  // validação definitiva acontece no servidor (gatilho handle_new_user).
   if (preview && f.email) {
     let t = null;
     f.email.addEventListener("input", () => {
       clearTimeout(t);
       const email = f.email.value.trim();
-      preview.textContent = "Digite o e-mail que será usado no acesso.";
+      preview.textContent = "Digite o e-mail cadastrado pelo administrador.";
       if (!email || !email.includes("@")) return;
       t = setTimeout(async () => {
         const { data, error } = await buscarCadastroAluno(email, areaLogin);
         if (error) {
           console.warn("Cadastro de aluno não consultado:", error.message || error);
-          preview.textContent = "Não consultei cadastro prévio, mas você pode criar o primeiro acesso mesmo assim.";
+          preview.textContent = "Não consegui consultar o cadastro agora. Tente novamente em instantes.";
           return;
         }
         if (data) {
-          preview.textContent = `Cadastro encontrado: ${data.nome || email}${data.matricula ? " · " + data.matricula : ""}${data.empresa ? " · " + data.empresa : ""}`;
+          preview.textContent = `Cadastro encontrado: ${data.nome || email}${data.matricula ? " · " + data.matricula : ""}`;
           if (f.elements.nome && !f.elements.nome.value && data.nome) f.elements.nome.value = data.nome;
           if (f.elements.matricula && !f.elements.matricula.value && data.matricula) f.elements.matricula.value = data.matricula;
-          if (f.elements.empresa && !f.elements.empresa.value && data.empresa) f.elements.empresa.value = data.empresa;
         } else {
-          preview.textContent = "E-mail novo: você pode criar o primeiro acesso como aluno desta área.";
+          preview.textContent = "E-mail não encontrado no cadastro. Peça ao administrador para cadastrar seu e-mail antes do primeiro acesso.";
         }
       }, 450);
     });
@@ -176,9 +177,6 @@ function ligarFormAlunoCriar(areaLogin) {
     if (f.senha.value.length < 6) {
       return msg("[data-msg-aluno-criar]", "erro", "A senha precisa ter ao menos 6 caracteres.");
     }
-    if (!String(f.elements.empresa?.value || "").trim()) {
-      return msg("[data-msg-aluno-criar]", "erro", "Informe a empresa a que você pertence.");
-    }
     if (f.senha.value !== f.senha2.value) {
       return msg("[data-msg-aluno-criar]", "erro", "As senhas não conferem.");
     }
@@ -188,25 +186,33 @@ function ligarFormAlunoCriar(areaLogin) {
     const email = f.email.value.trim().toLowerCase();
     const cadastro = await buscarCadastroAluno(email, areaLogin);
     if (cadastro.error) {
-      // A lista administrada é opcional para este fluxo. Se a RPC/tabela ainda
-      // não existir, seguimos com o cadastro aberto do aluno.
-      console.warn("Cadastro de aluno não consultado:", cadastro.error.message || cadastro.error);
+      // Falha FECHADA: sem conseguir consultar o cadastro, não seguimos.
+      console.error("Cadastro de aluno não consultado:", cadastro.error.message || cadastro.error);
+      msg("[data-msg-aluno-criar]", "erro",
+        "Não consegui consultar o cadastro de alunos. Verifique a conexão e tente novamente. Se persistir, avise o administrador (o SQL sql/atualizacao-seguranca.sql precisa estar aplicado).");
+      travar(btn, false, "Criar primeiro acesso");
+      return;
+    }
+    if (!cadastro.data) {
+      // A validação definitiva é no servidor; aqui evitamos uma tentativa inútil.
+      msg("[data-msg-aluno-criar]", "erro",
+        "Seu e-mail ainda não foi cadastrado pelo administrador. Peça o cadastro antes de criar o primeiro acesso.");
+      travar(btn, false, "Criar primeiro acesso");
+      return;
     }
 
     const nomeDigitado = (f.elements.nome?.value || "").trim();
     const matriculaDigitada = (f.elements.matricula?.value || "").trim();
-    const empresaDigitada = (f.elements.empresa?.value || "").trim();
     const dadosPerfil = {
       nome: cadastro.data?.nome || nomeDigitado || email.split("@")[0],
       matricula: cadastro.data?.matricula || matriculaDigitada || null,
-      empresa: cadastro.data?.empresa || empresaDigitada || null,
       criarSeNaoExistir: true,
     };
 
     const { data, error } = await sb.auth.signUp({
       email,
       password: f.senha.value,
-      options: { data: { nome: dadosPerfil.nome, matricula: dadosPerfil.matricula, empresa: dadosPerfil.empresa, area: areaLogin } },
+      options: { data: { nome: dadosPerfil.nome, matricula: dadosPerfil.matricula, area: areaLogin } },
     });
 
     if (error) {
@@ -284,6 +290,34 @@ async function buscarCadastroAluno(email, areaLogin) {
   return { data: linha, error: null };
 }
 
+// ---- Esqueci minha senha ----
+// Botões [data-esqueci="idDoInputDeEmail"] com data-msg="seletorDaMsg".
+// Envia o link de redefinição; a nova senha é definida em redefinir-senha.html.
+function ligarEsqueciSenha() {
+  document.querySelectorAll("[data-esqueci]").forEach((botao) => {
+    botao.addEventListener("click", async () => {
+      const input = document.getElementById(botao.dataset.esqueci);
+      const alvoMsg = botao.dataset.msg || "[data-msg-aluno-login]";
+      const email = (input?.value || "").trim();
+      if (!email || !email.includes("@")) {
+        msg(alvoMsg, "erro", "Digite seu e-mail no campo acima e clique de novo em “Esqueci minha senha”.");
+        if (input) input.focus();
+        return;
+      }
+      botao.disabled = true;
+      const redirectTo = new URL("redefinir-senha.html", window.location.href).href;
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+      botao.disabled = false;
+      if (error) {
+        msg(alvoMsg, "erro", traduzErro(error));
+        return;
+      }
+      msg(alvoMsg, "ok",
+        "Se este e-mail tiver acesso, enviamos um link de redefinição de senha. Abra o e-mail e siga o link.");
+    });
+  });
+}
+
 // ---- helpers de UI ----
 function travar(btn, on, txt) {
   if (!btn) return;
@@ -315,5 +349,10 @@ function traduzErro(error) {
   if (emailJaCadastrado(error)) return "Este e-mail já tem acesso. Use a aba “Entrar”.";
   if (/email.+confirm/i.test(m)) return "Confirme seu e-mail antes de entrar.";
   if (/rate limit/i.test(m)) return "Muitas tentativas. Aguarde um instante e tente de novo.";
+  // O gatilho handle_new_user bloqueia signup de e-mail não cadastrado; o
+  // Supabase devolve esse bloqueio como "Database error saving new user".
+  if (/cadastro não autorizado|database error saving new user/i.test(m)) {
+    return "Seu e-mail ainda não foi liberado pelo administrador para o primeiro acesso.";
+  }
   return m;
 }

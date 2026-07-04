@@ -53,6 +53,7 @@ function renderCadastroAlunos() {
         <h2 style="margin-bottom:.25rem" data-form-titulo>Novo aluno</h2>
         <p class="muted" style="margin:0">
           Cadastre o aluno e defina uma senha inicial. Depois ele já poderá entrar pela aba <b>Entrar como aluno</b> usando esse e-mail e senha.
+          <b>Importante:</b> o "Primeiro acesso" do site só funciona para e-mails cadastrados (e ativos) nesta lista — aluno marcado como <b>Inativo</b> também não consegue registrar prova.
         </p>
         <p class="muted small" style="margin:.35rem 0 0">
           A senha é enviada ao Supabase Auth e não fica salva na tabela de cadastro.

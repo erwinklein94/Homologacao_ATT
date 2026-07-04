@@ -3,18 +3,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="refresh" content="0;url=cadastro-contas.html" />
-  <title>Cadastro de contas · Rumo</title>
+  <title>Cadastro de Alunos · Rumo</title>
   <link rel="icon" href="assets/favicon.png" />
-  <link rel="stylesheet" href="css/rumo.css" />
+  <link rel="stylesheet" href="css/rumo.css?v=20260704-seguranca-v1" />
 </head>
 <body>
+  <header class="topbar" data-topbar></header>
+
   <main class="page">
-    <div class="card center">
-      <h1>Cadastro de contas</h1>
-      <p class="muted">A página mudou de nome.</p>
-      <a class="btn btn--primary" href="cadastro-contas.html">Abrir Cadastro de contas</a>
+    <div data-config-aviso></div>
+
+    <div class="page__head">
+      <div class="eyebrow">Área do administrador</div>
+      <h1>Cadastro de Alunos</h1>
+      <p class="muted">Cadastre os alunos autorizados a fazer o primeiro acesso no sistema.</p>
     </div>
+
+    <section data-cadastro-alunos></section>
   </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js?v=20260704-seguranca-v1"></script>
+  <script src="js/app.js?v=20260704-seguranca-v1"></script>
+  <script src="js/cadastro-alunos.js?v=20260704-seguranca-v1"></script>
 </body>
 </html>

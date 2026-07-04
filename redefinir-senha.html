@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redefinir senha · Homologação Alívio de Tensão · Rumo</title>
+  <link rel="icon" href="assets/favicon.png" />
+  <link rel="stylesheet" href="css/rumo.css?v=20260704-seguranca-v1" />
+</head>
+<body>
+  <div class="login-shell">
+    <main class="login-hero">
+      <div class="login-box" style="max-width:520px">
+        <section class="login-acesso" aria-label="Redefinição de senha">
+          <div data-config-aviso></div>
+          <section class="login-card">
+            <div class="login-card__topo">
+              <div class="login-card__icon" aria-hidden="true">🔑</div>
+              <div>
+                <h2>Redefinir senha</h2>
+                <p class="muted">Defina uma nova senha para seu acesso.</p>
+              </div>
+            </div>
+
+            <div data-aguardando>
+              <p class="muted">Validando o link de redefinição…</p>
+            </div>
+
+            <form data-form-redefinir class="hidden" novalidate>
+              <div class="field">
+                <label for="rs-senha">Nova senha</label>
+                <div class="senha-wrap">
+                  <input id="rs-senha" class="input" type="password" name="senha" autocomplete="new-password" required placeholder="mín. 6 caracteres" />
+                  <button type="button" class="senha-toggle" data-toggle-password="rs-senha" aria-label="Mostrar senha">Mostrar</button>
+                </div>
+              </div>
+              <div class="field">
+                <label for="rs-senha2">Repetir nova senha</label>
+                <div class="senha-wrap">
+                  <input id="rs-senha2" class="input" type="password" name="senha2" autocomplete="new-password" required placeholder="repita a senha" />
+                  <button type="button" class="senha-toggle" data-toggle-password="rs-senha2" aria-label="Mostrar senha">Mostrar</button>
+                </div>
+              </div>
+              <button class="btn btn--primary btn--block" type="submit">Salvar nova senha</button>
+              <div class="hidden" data-msg-redefinir></div>
+            </form>
+
+            <div data-sem-sessao class="hidden">
+              <div class="alerta alerta--erro">
+                Este link de redefinição é inválido ou expirou.
+                Volte ao <a href="login.html">login</a> e use “Esqueci minha senha” novamente.
+              </div>
+            </div>
+          </section>
+        </section>
+      </div>
+    </main>
+    <footer class="login-foot">Rumo · Uso interno — Homologação Alívio de Tensão</footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>if(!window.supabase){document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');}</script>
+  <script src="js/config.js?v=20260704-seguranca-v1"></script>
+  <script src="js/app.js?v=20260704-seguranca-v1"></script>
+  <script src="js/redefinir-senha.js?v=20260704-seguranca-v1"></script>
+</body>
+</html>

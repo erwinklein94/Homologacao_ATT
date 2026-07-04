@@ -1,65 +1,36 @@
 -- =====================================================================
--- Seed das 2 provas ATT 4 ativas — Alívio de Tensão Térmica
---
--- Baseado nas planilhas anexadas:
---   PROVA DE ATT 4 RUMO_004 - Rev3.xlsx
---   GABARITO DE ATT 4 - Rev3.xlsx
+-- Seed das 2 provas de Homologação Alívio de Tensão — ATT 4
+-- Baseado nas planilhas PROVA DE ATT 4 RUMO_004 - Rev3.xlsx e GABARITO DE ATT 4 - Rev3.xlsx
 --
 -- Como usar:
 -- 1) Rode sql/schema.sql se o banco ainda não estiver configurado.
--- 2) Rode este arquivo no SQL Editor do Supabase.
+-- 2) Rode sql/alivio-tensao-area.sql se a área alivio_tensao ainda não existir.
+-- 3) Rode este arquivo no SQL Editor do Supabase.
 --
--- O script é idempotente: pode rodar novamente para reativar/atualizar
--- as provas ATT4-1 e ATT4-2 sem apagar histórico de tentativas.
--- Ele também cria a coluna subarea caso o banco ainda não tenha.
+-- O script deixa inativas as provas antigas da área alivio_tensao
+-- e cria/atualiza apenas as provas ATT4-1 e ATT4-2.
+-- O histórico de tentativas permanece preservado.
 -- =====================================================================
 
 begin;
 
-alter table public.provas
-  add column if not exists subarea text
-  check (subarea is null or subarea in
-    ('alivio_termico', 'prospeccao_trilhos', 'operacao_verse', 'temperaturas_neutras'));
-
-alter table public.tentativas
-  add column if not exists subarea text
-  check (subarea is null or subarea in
-    ('alivio_termico', 'prospeccao_trilhos', 'operacao_verse', 'temperaturas_neutras'));
-
 update public.provas
-   set subarea = 'alivio_termico', atualizado_em = now()
- where area = 'alivio_tensao' and subarea is null;
+set ativo = false, atualizado_em = now()
+where area = 'alivio_tensao';
 
-update public.tentativas
-   set subarea = 'alivio_termico'
- where area = 'alivio_tensao' and subarea is null;
-
-create index if not exists idx_provas_area_subarea on public.provas (area, subarea);
-create index if not exists idx_tentativas_area_subarea on public.tentativas (area, subarea, realizado_em desc);
-
--- Deixa inativas somente as provas antigas do treinamento ATT térmico.
--- As provas dos outros treinamentos não são mexidas.
-update public.provas
-   set ativo = false, atualizado_em = now()
- where area = 'alivio_tensao'
-   and coalesce(subarea, 'alivio_termico') = 'alivio_termico'
-   and codigo not in ('ATT4-1', 'ATT4-2');
-
-insert into public.provas (area, subarea, codigo, titulo, descricao, nota_minima, ativo)
-values ('alivio_tensao', 'alivio_termico', 'ATT4-1', 'Prova ATT 4 — Parte 1', 'Questões 1 a 10 da planilha PROVA DE ATT 4 RUMO_004 - Rev3, adaptadas para o modelo objetivo do sistema.', 7, true)
+insert into public.provas (area, codigo, titulo, descricao, nota_minima, ativo)
+values ('alivio_tensao', 'ATT4-1', 'Prova ATT 4 — Parte 1', 'Questões 1 a 10 da planilha PROVA DE ATT 4 RUMO_004 - Rev3, adaptadas para o modelo objetivo do sistema.', 7, true)
 on conflict (area, codigo) do update
-set subarea = excluded.subarea,
-    titulo = excluded.titulo,
+set titulo = excluded.titulo,
     descricao = excluded.descricao,
     nota_minima = excluded.nota_minima,
     ativo = true,
     atualizado_em = now();
 
-insert into public.provas (area, subarea, codigo, titulo, descricao, nota_minima, ativo)
-values ('alivio_tensao', 'alivio_termico', 'ATT4-2', 'Prova ATT 4 — Parte 2', 'Questões 11 a 20 da planilha PROVA DE ATT 4 RUMO_004 - Rev3, incluindo análise de gráficos, deslocamento e tensor hidráulico.', 7, true)
+insert into public.provas (area, codigo, titulo, descricao, nota_minima, ativo)
+values ('alivio_tensao', 'ATT4-2', 'Prova ATT 4 — Parte 2', 'Questões 11 a 20 da planilha PROVA DE ATT 4 RUMO_004 - Rev3, incluindo análise de gráficos, deslocamento e tensor hidráulico.', 7, true)
 on conflict (area, codigo) do update
-set subarea = excluded.subarea,
-    titulo = excluded.titulo,
+set titulo = excluded.titulo,
     descricao = excluded.descricao,
     nota_minima = excluded.nota_minima,
     ativo = true,
@@ -239,9 +210,9 @@ from public.provas p where p.area = 'alivio_tensao' and p.codigo = 'ATT4-2';
 commit;
 
 -- Conferência rápida:
-select p.codigo, p.subarea, p.titulo, p.ativo, count(q.id) as questoes
+select p.codigo, p.titulo, p.ativo, count(q.id) as questoes
 from public.provas p
 left join public.questoes q on q.prova_id = p.id
-where p.area = 'alivio_tensao' and p.codigo in ('ATT4-1','ATT4-2')
-group by p.codigo, p.subarea, p.titulo, p.ativo
+where p.area = 'alivio_tensao'
+group by p.codigo, p.titulo, p.ativo
 order by p.codigo;

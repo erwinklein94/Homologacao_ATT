@@ -117,7 +117,8 @@ async function gerarCertificadoPDF(d) {
   doc.text("Data da avaliação", W - 77.5, yBase + 10, { align: "center" });
 
   doc.setFontSize(8); doc.setTextColor(...RGB.cinza);
-  doc.text(`Código de verificação: ${d.codigo}`, W / 2, H - 16, { align: "center" });
+  const urlVerif = d.url_verificacao || new URL("verificar.html", window.location.href).href;
+  doc.text(`Código de verificação: ${d.codigo}  ·  Valide a autenticidade em: ${urlVerif}?codigo=${d.codigo}`, W / 2, H - 16, { align: "center" });
   doc.text(`Documento gerado pelo portal de ${portal} — Rumo.`, W / 2, H - 12, { align: "center" });
 
   const nomeArq = `certificado-${(d.aluno_nome || "aluno").toLowerCase().replace(/\s+/g, "-")}-${d.codigo}.pdf`;

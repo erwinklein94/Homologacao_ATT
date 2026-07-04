@@ -103,12 +103,8 @@ function ligarAbas() {
 function renderAtividades() {
   const host = document.querySelector("[data-atividades]");
   const provasUnicas = [...new Set(adm.tentativas.map((t) => t.prova_titulo))].sort();
-  const empresasUnicas = [...new Set(adm.tentativas.map((t) => (t.empresa || "").trim()).filter(Boolean))].sort();
   const opcoesProva = ['<option value="">Todas as provas</option>']
     .concat(provasUnicas.map((p) => `<option value="${escaparHtml(p)}">${escaparHtml(p)}</option>`))
-    .join("");
-  const opcoesEmpresa = ['<option value="">Todas as empresas</option>']
-    .concat(empresasUnicas.map((e) => `<option value="${escaparHtml(e)}">${escaparHtml(e)}</option>`))
     .join("");
 
   host.innerHTML = `
@@ -121,10 +117,6 @@ function renderAtividades() {
         <div class="field" style="margin:0;min-width:220px">
           <label for="f-prova">Prova</label>
           <select id="f-prova" class="select" data-filtro-prova>${opcoesProva}</select>
-        </div>
-        <div class="field" style="margin:0;min-width:190px">
-          <label for="f-empresa">Empresa</label>
-          <select id="f-empresa" class="select" data-filtro-empresa>${opcoesEmpresa}</select>
         </div>
         <div class="field" style="margin:0;min-width:170px">
           <label for="f-result">Resultado</label>
@@ -141,22 +133,19 @@ function renderAtividades() {
   const aplicar = () => desenharTabelaAtividades(
     host.querySelector("[data-filtro-aluno]").value.trim().toLowerCase(),
     host.querySelector("[data-filtro-prova]").value,
-    host.querySelector("[data-filtro-empresa]").value,
     host.querySelector("[data-filtro-result]").value
   );
   host.querySelector("[data-filtro-aluno]").addEventListener("input", aplicar);
   host.querySelector("[data-filtro-prova]").addEventListener("change", aplicar);
-  host.querySelector("[data-filtro-empresa]").addEventListener("change", aplicar);
   host.querySelector("[data-filtro-result]").addEventListener("change", aplicar);
   aplicar();
 }
 
-function desenharTabelaAtividades(fAluno, fProva, fEmpresa, fResult) {
+function desenharTabelaAtividades(fAluno, fProva, fResult) {
   const host = document.querySelector("[data-tabela-atividades]");
   let linhas = adm.tentativas.filter((t) => {
     if (fAluno && !(t.aluno_nome || "").toLowerCase().includes(fAluno)) return false;
     if (fProva && t.prova_titulo !== fProva) return false;
-    if (fEmpresa && (t.empresa || "") !== fEmpresa) return false;
     if (fResult === "ok" && !t.aprovado) return false;
     if (fResult === "reprov" && t.aprovado) return false;
     return true;
@@ -174,7 +163,6 @@ function desenharTabelaAtividades(fAluno, fProva, fEmpresa, fResult) {
     return `<tr>
       <td>${escaparHtml(t.aluno_nome)}</td>
       <td>${escaparHtml(t.prova_titulo)}</td>
-      <td>${escaparHtml(t.empresa || "—")}</td>
       <td><b>${fmtNota(t.nota)}</b> <span class="muted small">(${t.acertos}/${t.total})</span></td>
       <td>${badge}</td>
       <td>${escaparHtml(t.instrutor_nome)}</td>
@@ -187,7 +175,7 @@ function desenharTabelaAtividades(fAluno, fProva, fEmpresa, fResult) {
     <div class="tabela-wrap">
       <table class="tabela">
         <thead><tr>
-          <th>Aluno</th><th>Prova</th><th>Empresa</th><th>Nota</th><th>Resultado</th><th>Instrutor</th><th>Data</th>
+          <th>Aluno</th><th>Prova</th><th>Nota</th><th>Resultado</th><th>Instrutor</th><th>Data</th>
         </tr></thead>
         <tbody>${corpo}</tbody>
       </table>
@@ -219,8 +207,8 @@ function tentativaParaHistorico(t) {
     gerencia: "—",
     participante: t.aluno_nome || "—",
     funcao: "—",
-    matricula: t.aluno_matricula || "—",
-    empresa: t.empresa || "—",
+    matricula: "—",
+    empresa: "—",
     nota: (t.nota === null || t.nota === undefined) ? null : Number(t.nota),
     aprovacao: t.aprovado ? "APROVADO" : "REPROVADO",
     instrutor: t.instrutor_nome || "—",
@@ -412,45 +400,28 @@ function nomeAreaAtual() {
   return meta?.titulo || "esta área";
 }
 
-function diagnosticarSeedArea() {
-  const seedArea = obterSeedArea();
-  const porCodigo = new Map(adm.provas.map((p) => [p.codigo, p]));
-  const faltando = seedArea.filter((p) => !porCodigo.has(p.codigo));
-  const inativas = seedArea.filter((p) => porCodigo.has(p.codigo) && porCodigo.get(p.codigo)?.ativo !== true);
-  return {
-    seedArea,
-    faltando,
-    inativas,
-    precisaAtualizar: seedArea.length > 0 && (adm.provas.length === 0 || faltando.length > 0 || inativas.length > 0),
-  };
-}
-
 function conferirSeed() {
   const banner = document.querySelector("[data-seed-banner]");
   if (!banner) return;
-  const diag = diagnosticarSeedArea();
-  const { seedArea, faltando, inativas, precisaAtualizar } = diag;
-  banner.classList.toggle("hidden", !precisaAtualizar);
-  if (precisaAtualizar) {
-    const titulo = adm.provas.length === 0
-      ? `Nenhuma prova cadastrada em ${escaparHtml(nomeAreaAtual())}.`
-      : `Há prova padrão faltando ou inativa em ${escaparHtml(nomeAreaAtual())}.`;
-    const detalhe = adm.provas.length === 0
-      ? `Carregue as ${seedArea.length} provas ATT 4 no Supabase e deixe tudo ativo para os alunos.`
-      : `Faltando: ${faltando.length}. Inativas: ${inativas.length}. Use o botão para atualizar/ativar sem apagar histórico de tentativas.`;
+  const semProvas = adm.provas.length === 0;
+  const seedArea = obterSeedArea();
+  const temSeed = Array.isArray(seedArea) && seedArea.length > 0;
+  banner.classList.toggle("hidden", !(semProvas && temSeed));
+  if (semProvas && temSeed) {
     banner.innerHTML = `
       <div class="alerta alerta--info" style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:240px">
-          <b>${titulo}</b><br>
-          ${detalhe}
+          <b>Nenhuma prova cadastrada em ${escaparHtml(nomeAreaAtual())}.</b><br>
+          Carregue as ${seedArea.length} provas padrão desta área no Supabase (você poderá editar tudo depois).
         </div>
+        <button class="btn btn--primary" data-btn-seed>Carregar provas padrão da área</button>
       </div>`;
+    banner.querySelector("[data-btn-seed]").addEventListener("click", (evt) => carregarSeed(evt));
   }
 }
 
 async function carregarSeed(e, opcoes = {}) {
   const btn = e?.target;
-  const textoOriginalBtn = btn?.textContent || "Carregar provas";
   const substituirArea = !!opcoes.substituirArea;
   const seedArea = obterSeedArea();
   if (!seedArea.length) {
@@ -476,14 +447,20 @@ async function carregarSeed(e, opcoes = {}) {
         .select().single();
       if (e1) throw e1;
 
-      // Substitui as questões dessa prova.
-      const { error: eDel } = await sb.from("questoes").delete().eq("prova_id", prova.id);
-      if (eDel) throw eDel;
-      const questoes = p.questoes.map((q) => ({
-        prova_id: prova.id, ordem: q.ordem, enunciado: q.enunciado,
-        alternativas: q.alternativas, correta: q.correta, justificativa: q.justificativa || "",
-      }));
-      const { error: e2 } = await sb.from("questoes").insert(questoes);
+      // Substitui as questões dessa prova em UMA transação (RPC).
+      const { error: e2 } = await sb.rpc("salvar_prova_completa", {
+        p_prova_id: prova.id,
+        p_titulo: prova.titulo,
+        p_descricao: prova.descricao,
+        p_nota_minima: prova.nota_minima,
+        p_ativo: true,
+        p_questoes: p.questoes.map((q) => ({
+          enunciado: q.enunciado,
+          alternativas: q.alternativas,
+          correta: q.correta,
+          justificativa: q.justificativa || "",
+        })),
+      });
       if (e2) throw e2;
     }
     await Promise.all([carregarProvas(), carregarTentativas()]);
@@ -494,7 +471,7 @@ async function carregarSeed(e, opcoes = {}) {
   } catch (err) {
     console.error(err);
     alert("Não foi possível carregar as provas: " + (err.message || err));
-    travarBtn(btn, false, substituirArea ? "Restaurar provas" : textoOriginalBtn);
+    travarBtn(btn, false, substituirArea ? "Substituir provas da área" : "Carregar provas padrão da área");
   }
 }
 
@@ -504,7 +481,7 @@ function renderListaProvas() {
     host.innerHTML = `
       <div class="card center">
         <h3>Nenhuma prova cadastrada</h3>
-        <p class="muted">Nenhuma prova foi encontrada para este treinamento. Crie uma nova prova ou carregue as provas pelo SQL no Supabase.</p>
+        <p class="muted">Use o botão acima para carregar as provas padrão da área, ou crie uma nova.</p>
         <button class="btn btn--primary" data-nova-prova>Criar prova em branco</button>
       </div>`;
     host.querySelector("[data-nova-prova]").addEventListener("click", criarProvaVazia);
@@ -526,6 +503,7 @@ function renderListaProvas() {
       <div class="toolbar">
         <h2 style="margin:0">Provas cadastradas</h2>
         <span class="spacer"></span>
+        ${adm.perfil?.area === "alivio_tensao" && obterSeedArea().length ? '<button class="btn btn--ghost btn--sm" data-reset-seed>Substituir provas do treinamento</button>' : ''}
         <button class="btn btn--ghost btn--sm" data-nova-prova>+ Nova prova</button>
       </div>
       ${cards}
@@ -534,7 +512,14 @@ function renderListaProvas() {
 
   host.querySelectorAll("[data-editar]").forEach((b) =>
     b.addEventListener("click", () => abrirEditor(b.dataset.editar)));
-  // Botões de carga/substituição das provas padrão removidos da interface.
+  const btnReset = host.querySelector("[data-reset-seed]");
+  if (btnReset) {
+    btnReset.addEventListener("click", (evt) => {
+      const qtd = obterSeedArea().length;
+      const ok = confirm(`Isso vai excluir as provas atuais do treinamento "${getSubareaMeta(adm.subarea).nome}" e carregar ${qtd} prova(s) padrão. As provas dos outros treinamentos e o histórico de tentativas já realizadas serão mantidos. Deseja continuar?`);
+      if (ok) carregarSeed(evt, { substituirArea: true });
+    });
+  }
   host.querySelector("[data-nova-prova]").addEventListener("click", criarProvaVazia);
 }
 
@@ -713,24 +698,23 @@ async function salvarProva(host) {
   travarBtn(btn, true, "Salvando…");
   status.textContent = "";
   try {
-    // 1) Atualiza dados da prova.
-    const { error: e1 } = await sb.from("provas").update({
-      titulo: p.titulo, descricao: p.descricao, nota_minima: p.nota_minima,
-      ativo: p.ativo, atualizado_em: new Date().toISOString(),
-    }).eq("id", p.id);
+    // Prova + questões salvas em UMA transação no banco (RPC).
+    // Se qualquer parte falhar, nada é alterado — a prova nunca fica
+    // sem questões por queda de conexão no meio do salvamento.
+    const { error: e1 } = await sb.rpc("salvar_prova_completa", {
+      p_prova_id: p.id,
+      p_titulo: p.titulo,
+      p_descricao: p.descricao,
+      p_nota_minima: p.nota_minima,
+      p_ativo: p.ativo,
+      p_questoes: adm.questoes.map((q) => ({
+        enunciado: q.enunciado,
+        alternativas: q.alternativas,
+        correta: q.correta,
+        justificativa: q.justificativa || "",
+      })),
+    });
     if (e1) throw e1;
-
-    // 2) Substitui o conjunto de questões (abordagem simples e previsível).
-    const { error: e2 } = await sb.from("questoes").delete().eq("prova_id", p.id);
-    if (e2) throw e2;
-    if (adm.questoes.length > 0) {
-      const novas = adm.questoes.map((q, i) => ({
-        prova_id: p.id, ordem: i + 1, enunciado: q.enunciado,
-        alternativas: q.alternativas, correta: q.correta, justificativa: q.justificativa,
-      }));
-      const { error: e3 } = await sb.from("questoes").insert(novas);
-      if (e3) throw e3;
-    }
     await carregarProvas();
     adm.provaSel = adm.provas.find((x) => x.id === p.id);
     status.textContent = "Salvo!";

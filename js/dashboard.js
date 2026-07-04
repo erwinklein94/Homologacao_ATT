@@ -59,7 +59,7 @@ async function carregarTentativas(area) {
 }
 async function carregarAlunos(area) {
   const { data, error } = await sb
-    .from("profiles").select("id, nome, email, empresa, criado_em, role, area").eq("area", area).eq("role", "aluno");
+    .from("profiles").select("id, nome, criado_em, role, area").eq("area", area).eq("role", "aluno");
   if (error) { console.error(error); return []; }
   return data || [];
 }
@@ -243,8 +243,8 @@ function tentativaParaHistorico(t) {
     gerencia: "—",
     participante: t.aluno_nome || "—",
     funcao: "—",
-    matricula: t.aluno_matricula || "—",
-    empresa: t.empresa || "—",
+    matricula: "—",
+    empresa: "—",
     nota: notaNumero(t.nota),
     aprovacao: t.aprovado ? "APROVADO" : "REPROVADO",
     instrutor: t.instrutor_nome || "—",

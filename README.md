@@ -30,6 +30,17 @@ Roda no **GitHub Pages** sem nenhuma etapa de build.
 **Aluno**
 - **Fazer prova** (`prova.html`): as provas aparecem agrupadas por treinamento; cada
   tentativa registra o treinamento da prova. Baixa o certificado ao final.
+  As questões chegam **sem gabarito** e a correção acontece **no banco**
+  (RPC `corrigir_prova`); as respostas ficam salvas no aparelho até o envio
+  (um F5 não perde a prova). O instrutor é sempre um administrador da área.
+- **Primeiro acesso**: só funciona para e-mail **cadastrado e ativo** pelo
+  administrador em *Cadastro de Alunos* (validado no servidor).
+- **Esqueci minha senha**: link no login envia e-mail de redefinição
+  (`redefinir-senha.html`).
+
+**Público (sem login)**
+- **Verificar certificado** (`verificar.html`): qualquer pessoa valida a
+  autenticidade digitando o código `HSA-XXXXXXXX` do PDF.
 - **Meu perfil** (`perfil.html`): seu histórico de provas e certificados.
 - O aluno **nunca vê** as páginas de administrador (nem link para elas).
 
@@ -54,12 +65,16 @@ js/admin.js       Atividades + histórico + editor de questões + carga das prov
 js/dashboard.js   KPIs, filtros e gráficos (Chart.js)
 js/certificado.js Geração do certificado em PDF (jsPDF)
 js/seed-data.js   As 2 provas ATT 4 padrão (botão "Carregar provas padrão")
+js/verificar.js   Validação pública do código do certificado
+js/redefinir-senha.js  Definição de nova senha (link do e-mail)
 js/historico-alivio-tensao.js  Snapshot local do histórico da planilha (reserva)
 sql/schema.sql    Tabelas, papéis, RLS e gatilhos
 sql/subareas-alivio-tensao.sql       Cria os 4 treinamentos (colunas subarea)
 sql/historico-alivio-tensao.sql      Tabela + dados do histórico da planilha (ATT)
 sql/seed-provas-alivio-tensao.sql    As 2 provas ATT 4 em SQL (alternativa ao botão)
 sql/limpeza-historico-alivio-sem-nota.sql  Utilitário: remove registros legados sem nota
+sql/atualizacao-seguranca.sql        Correção no servidor, trava do 1º acesso,
+                                     verificação de certificado e salvamento transacional
 ```
 
 As bibliotecas externas (Supabase, Chart.js, jsPDF) são carregadas por CDN — não há
@@ -75,7 +90,11 @@ No **SQL Editor** do projeto, rode nesta ordem:
 1. `sql/schema.sql` — tabelas, RLS e gatilhos;
 2. `sql/subareas-alivio-tensao.sql` — cria os 4 treinamentos;
 3. `sql/historico-alivio-tensao.sql` — tabela e dados do histórico da planilha (ATT);
-4. (opcional) `sql/seed-provas-alivio-tensao.sql` — ou use o botão
+4. **`sql/atualizacao-seguranca.sql` — OBRIGATÓRIO.** Move a correção da prova
+   para o banco (o gabarito nunca vai ao navegador antes da correção), trava o
+   primeiro acesso para e-mails cadastrados pelo administrador, cria a
+   verificação pública de certificado e o salvamento transacional de provas;
+5. (opcional) `sql/seed-provas-alivio-tensao.sql` — ou use o botão
    "Carregar provas padrão" no site, logado como admin no treinamento
    *Alívio de tensão térmica*.
 
@@ -93,17 +112,24 @@ Depois, em **Authentication → Providers → Email**, desative **"Confirm email
 
 ## 4. Criar o administrador
 
-Não existe tela de "criar admin" (de propósito). O fluxo é:
+Não existe tela de "criar admin" (de propósito). Como o primeiro acesso agora
+exige e-mail pré-cadastrado, o fluxo é em 3 passos:
 
-1. No site, use **Primeiro acesso** com o e-mail que será do administrador.
-2. No Supabase, em **SQL Editor**, rode (trocando pelo e-mail usado):
+1. No Supabase, em **SQL Editor**, autorize o e-mail (trocando nome/e-mail):
 
 ```sql
-insert into public.profiles (id, nome, matricula, area, role)
-select id, split_part(email, '@', 1), null, 'alivio_tensao', 'admin'
-from auth.users
-where lower(email) = lower('voce@rumolog.com')
-on conflict (id, area) do update set role = 'admin';
+insert into public.alunos_cadastrados (area, nome, email)
+values ('alivio_tensao', 'Nome do Especialista', 'voce@rumolog.com')
+on conflict (area, email_normalizado) do update set ativo = true;
+```
+
+2. No site, use **Primeiro acesso** com esse e-mail.
+3. De volta ao **SQL Editor**, promova a administrador:
+
+```sql
+update public.profiles set role = 'admin'
+where area = 'alivio_tensao'
+  and id = (select id from auth.users where lower(email) = lower('voce@rumolog.com'));
 ```
 
 ---
