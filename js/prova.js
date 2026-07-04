@@ -1,9 +1,7 @@
 // =====================================================================
-// prova.js — execução da prova (perfil aluno)
-// SEGURANÇA: as questões chegam SEM gabarito (RPC questoes_da_prova) e a
-// correção acontece NO BANCO (RPC corrigir_prova). O navegador nunca vê
-// a resposta correta antes de a prova ser corrigida no servidor.
-// Também há rascunho local: um F5 ou queda de rede não perde a prova.
+// prova.js — execução da prova (perfil aluno; admin usa para pré-visualizar)
+// Seleciona prova -> confirma dados e instrutor -> responde -> correção
+// -> grava tentativa -> resultado + certificado em PDF.
 // =====================================================================
 
 const estado = {
@@ -11,10 +9,8 @@ const estado = {
   provas: [],
   instrutores: [],
   prova: null,
-  questoes: [],       // [{id, ordem, enunciado, alternativas}] — sem gabarito
+  questoes: [],
   respostas: {},      // { questaoId: "b" }
-  instrutorId: null,
-  instrutorNome: "",
   ultimaTentativa: null,
 };
 
@@ -52,53 +48,6 @@ async function carregarInstrutores() {
   estado.instrutores = data || [];
 }
 
-// ------------------------------------------------------------- rascunho
-// Guarda a prova em andamento no localStorage: se o aluno atualizar a
-// página ou cair a conexão, ele retoma exatamente de onde parou.
-function chaveRascunho() {
-  return `rascunho_prova:${estado.perfil.id}`;
-}
-
-function salvarRascunho() {
-  if (!estado.prova) return;
-  try {
-    localStorage.setItem(chaveRascunho(), JSON.stringify({
-      provaId: estado.prova.id,
-      provaTitulo: estado.prova.titulo,
-      instrutorId: estado.instrutorId,
-      instrutorNome: estado.instrutorNome,
-      questoes: estado.questoes,
-      respostas: estado.respostas,
-      salvoEm: new Date().toISOString(),
-    }));
-  } catch (e) { console.warn("Não foi possível salvar o rascunho:", e); }
-}
-
-function lerRascunho() {
-  try {
-    const raw = localStorage.getItem(chaveRascunho());
-    if (!raw) return null;
-    const r = JSON.parse(raw);
-    if (!r || !r.provaId || !Array.isArray(r.questoes) || !r.questoes.length) return null;
-    // O rascunho só vale se a prova ainda existir e estiver ativa.
-    if (!estado.provas.some((p) => p.id === r.provaId)) return null;
-    return r;
-  } catch { return null; }
-}
-
-function limparRascunho() {
-  try { localStorage.removeItem(chaveRascunho()); } catch { /* ignora */ }
-}
-
-function retomarRascunho(r) {
-  estado.prova = estado.provas.find((p) => p.id === r.provaId);
-  estado.questoes = r.questoes;
-  estado.respostas = r.respostas || {};
-  estado.instrutorId = r.instrutorId || null;
-  estado.instrutorNome = r.instrutorNome || "";
-  renderExecucao();
-}
-
 // ---------------------------------------------------------------- início
 function renderInicio() {
   mostrarTela("inicio");
@@ -112,26 +61,6 @@ function renderInicio() {
       </div>`;
     return;
   }
-
-  if (estado.instrutores.length === 0) {
-    host.innerHTML = `
-      <div class="card">
-        <h1>Sem instrutor disponível</h1>
-        <p class="muted">Nenhum administrador desta área foi encontrado para registrar a aplicação da prova. Procure o especialista responsável.</p>
-      </div>`;
-    return;
-  }
-
-  const rascunho = lerRascunho();
-  const avisoRascunho = rascunho ? `
-    <div class="alerta alerta--info" style="margin-bottom:1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
-      <div style="flex:1;min-width:220px">
-        <b>Você tem uma prova em andamento:</b> ${escaparHtml(rascunho.provaTitulo)}<br>
-        <span class="small">${Object.keys(rascunho.respostas || {}).length} de ${rascunho.questoes.length} questões respondidas.</span>
-      </div>
-      <button class="btn btn--primary btn--sm" data-retomar>Continuar prova</button>
-      <button class="btn btn--ghost btn--sm" data-descartar>Descartar</button>
-    </div>` : "";
 
   const ehAlivio = estado.perfil.area === "alivio_tensao";
   let opcoesProva;
@@ -154,11 +83,9 @@ function renderInicio() {
       .join("");
   }
 
-  // Instrutor obrigatório e sempre um administrador da área (sem texto livre):
-  // o servidor rejeita qualquer instrutor que não seja admin desta área.
   const opcoesInstrutor = estado.instrutores
     .map((a) => `<option value="${a.id}">${escaparHtml(a.nome)}</option>`)
-    .join("");
+    .join("") + `<option value="__outro">Outro (digitar)…</option>`;
 
   const area = window.getAreaMeta ? window.getAreaMeta(estado.perfil.area) : null;
   const tituloArea = "Alívio de Tensão em Trilhos";
@@ -171,7 +98,6 @@ function renderInicio() {
       <p class="muted">Você precisa de nota <b>7,0</b> ou mais para ser homologado. Ao final, baixe seu certificado em PDF.</p>
     </div>
     <hr class="trilho" />
-    ${avisoRascunho}
     <div class="card card--chanfro stack">
       <div class="field">
         <label for="sel-prova">Prova</label>
@@ -189,28 +115,22 @@ function renderInicio() {
           <input class="input" value="${escaparHtml(estado.perfil.matricula || "—")}" disabled />
         </div>
       </div>
+      <div class="field">
+        <label>Empresa</label>
+        <input class="input" value="${escaparHtml(estado.perfil.empresa || "—")}" disabled />
+      </div>
 
       <div class="field">
         <label for="sel-instrutor">Instrutor que aplica a prova</label>
         <select id="sel-instrutor" class="select" data-sel-instrutor>${opcoesInstrutor}</select>
-        <div class="field__hint">O instrutor precisa ser um administrador desta área.</div>
+        <input class="input hidden" data-instrutor-outro placeholder="Nome do instrutor" style="margin-top:.5rem" />
       </div>
 
       <div class="toolbar">
         <button class="btn btn--primary" data-iniciar>Iniciar prova</button>
-        <span class="muted small">As questões e alternativas são embaralhadas a cada tentativa. Suas respostas ficam salvas neste aparelho até você enviar.</span>
+        <span class="muted small">As questões são embaralhadas a cada tentativa.</span>
       </div>
     </div>`;
-
-  if (rascunho) {
-    host.querySelector("[data-retomar]").addEventListener("click", () => retomarRascunho(rascunho));
-    host.querySelector("[data-descartar]").addEventListener("click", () => {
-      if (confirm("Descartar a prova em andamento? As respostas salvas serão apagadas.")) {
-        limparRascunho();
-        renderInicio();
-      }
-    });
-  }
 
   const selProva = host.querySelector("[data-sel-prova]");
   const atualizaDesc = () => {
@@ -220,6 +140,12 @@ function renderInicio() {
   selProva.addEventListener("change", atualizaDesc);
   atualizaDesc();
 
+  const selInstr = host.querySelector("[data-sel-instrutor]");
+  const inpOutro = host.querySelector("[data-instrutor-outro]");
+  selInstr.addEventListener("change", () => {
+    inpOutro.classList.toggle("hidden", selInstr.value !== "__outro");
+  });
+
   host.querySelector("[data-iniciar]").addEventListener("click", iniciarProva);
 }
 
@@ -228,20 +154,25 @@ async function iniciarProva() {
   const host = document.querySelector("[data-tela='inicio']");
   const provaId = host.querySelector("[data-sel-prova]").value;
   const selInstr = host.querySelector("[data-sel-instrutor]");
+  const inpOutro = host.querySelector("[data-instrutor-outro]");
 
-  if (!selInstr.value) {
-    selInstr.focus();
-    selInstr.style.borderColor = "var(--rumo-erro)";
-    return;
+  // Define instrutor (selecionado ou digitado)
+  let instrutorId = null, instrutorNome = "";
+  if (selInstr.value === "__outro") {
+    instrutorNome = inpOutro.value.trim();
+    if (!instrutorNome) { inpOutro.focus(); inpOutro.style.borderColor = "var(--rumo-erro)"; return; }
+  } else if (selInstr.value) {
+    instrutorId = selInstr.value;
+    instrutorNome = selInstr.options[selInstr.selectedIndex].text;
   }
-  estado.instrutorId = selInstr.value;
-  estado.instrutorNome = selInstr.options[selInstr.selectedIndex].text;
+  estado.instrutorId = instrutorId;
+  estado.instrutorNome = instrutorNome;
 
   estado.prova = estado.provas.find((p) => p.id === provaId);
   const btn = host.querySelector("[data-iniciar]");
   travarBtn(btn, true, "Carregando…");
 
-  // Questões SEM gabarito (a coluna "correta" não sai do banco aqui).
+  // Questões SEM gabarito: a coluna "correta" não sai do banco antes da correção.
   const { data, error } = await sb.rpc("questoes_da_prova", { p_prova_id: provaId });
   if (error || !data || data.length === 0) {
     travarBtn(btn, false, "Iniciar prova");
@@ -250,16 +181,11 @@ async function iniciarProva() {
       (error ? " Detalhe: " + error.message : ""));
     return;
   }
-
-  // Embaralha as questões E as alternativas de cada questão.
-  estado.questoes = embaralhar(data.slice()).map((q) => ({
-    ...q,
-    alternativas: embaralhar((q.alternativas || []).slice()),
-  }));
+  estado.questoes = embaralhar(data.slice());
   estado.respostas = {};
-  salvarRascunho();
   renderExecucao();
 }
+
 
 function renderTextoQuestao(texto) {
   const raw = String(texto || "");
@@ -289,8 +215,8 @@ function renderExecucao() {
 
   const questoesHtml = estado.questoes.map((q, idx) => {
     const alts = q.alternativas.map((a) => `
-      <label class="alt${estado.respostas[q.id] === a.id ? " is-selected" : ""}" data-alt data-questao="${q.id}" data-valor="${a.id}">
-        <input type="radio" name="q-${q.id}" value="${a.id}" ${estado.respostas[q.id] === a.id ? "checked" : ""} />
+      <label class="alt" data-alt data-questao="${q.id}" data-valor="${a.id}">
+        <input type="radio" name="q-${q.id}" value="${a.id}" />
         <span class="alt__key">${a.id})</span>
         <span>${escaparHtml(a.texto)}</span>
       </label>`).join("");
@@ -313,7 +239,6 @@ function renderExecucao() {
     <div class="card center stack">
       <p class="muted" data-aviso-faltam></p>
       <div><button class="btn btn--success" data-enviar>Enviar e ver resultado</button></div>
-      <p class="muted small">Suas respostas ficam salvas neste aparelho: se a página recarregar, você pode continuar de onde parou.</p>
     </div>`;
 
   host.querySelectorAll("[data-alt]").forEach((el) =>
@@ -329,7 +254,6 @@ function selecionar(el) {
   el.querySelector("input").checked = true;
   document.querySelectorAll(`[data-questao-card="${qid}"] .alt`)
     .forEach((a) => a.classList.toggle("is-selected", a === el));
-  salvarRascunho();
   atualizarProgresso();
 }
 
@@ -351,13 +275,15 @@ async function enviarProva() {
   if (feitas < total && !confirm(`Há ${total - feitas} questão(ões) sem resposta. Deseja enviar mesmo assim?`)) return;
 
   const btn = document.querySelector("[data-enviar]");
-  travarBtn(btn, true, "Corrigindo no servidor…");
+  travarBtn(btn, true, "Corrigindo…");
 
-  // A nota, os acertos e o aprovado são calculados NO BANCO.
+  // A nota, os acertos e o aprovado são calculados NO BANCO (RPC corrigir_prova).
+  // A tentativa gravada e o gabarito voltam na resposta.
   const { data, error } = await sb.rpc("corrigir_prova", {
     p_prova_id: estado.prova.id,
     p_respostas: estado.respostas,
-    p_instrutor_id: estado.instrutorId,
+    p_instrutor_id: estado.instrutorId || null,
+    p_instrutor_nome: estado.instrutorNome || null,
   });
 
   if (error || !data || !data.tentativa) {
@@ -368,10 +294,7 @@ async function enviarProva() {
     return;
   }
 
-  limparRascunho();
   estado.ultimaTentativa = data.tentativa;
-
-  // Mapa questaoId -> {correta, justificativa} para a tela de revisão.
   const gabarito = {};
   (data.gabarito || []).forEach((g) => { gabarito[g.questao_id] = g; });
   renderResultado(data.tentativa, gabarito);
@@ -382,13 +305,11 @@ function renderResultado(t, gabarito) {
   const host = document.querySelector("[data-tela='resultado']");
   const aprovado = t.aprovado;
   const codigo = t.codigo_cert || gerarCodigoCert(t.id);
-  const urlVerificacao = new URL("verificar.html", window.location.href).href;
 
-  // Revisão: para cada questão, mostra a marcada e a correta (o gabarito
-  // só chegou ao navegador DEPOIS da correção no servidor).
+  // Revisão: o gabarito só chegou ao navegador DEPOIS da correção no servidor.
   const revisao = estado.questoes.map((q, idx) => {
     const marcada = (t.respostas || {})[q.id];
-    const correta = gabarito[q.id]?.correta;
+    const correta = gabarito && gabarito[q.id] ? gabarito[q.id].correta : null;
     const alts = q.alternativas.map((a) => {
       let cls = "alt", tag = "";
       if (a.id === correta) { cls += " is-correct"; tag = '<span class="alt__tag">Correta</span>'; }
@@ -411,12 +332,11 @@ function renderResultado(t, gabarito) {
       <hr class="trilho" />
       <div class="toolbar" style="justify-content:center">
         <button class="btn btn--primary" data-pdf>Baixar certificado (PDF)</button>
-        <a class="btn btn--ghost" href="perfil.html">Ver meu histórico</a>
+        <a class="btn btn--ghost" href="${estado.perfil.role === "admin" ? "dashboard.html" : "perfil.html"}">
+          ${estado.perfil.role === "admin" ? "Ir ao painel" : "Ver meu histórico"}
+        </a>
       </div>
-      <p class="muted small" style="margin-top:1rem">
-        Código de verificação: <b>${escaparHtml(codigo)}</b><br>
-        Qualquer pessoa pode validar este certificado em <a href="verificar.html">${escaparHtml(urlVerificacao)}</a>
-      </p>
+      <p class="muted small" style="margin-top:1rem">Código de verificação: ${codigo}</p>
     </div>
     <h2 style="margin-top:1.6rem">Revisão da prova</h2>
     <p class="muted">Confira o gabarito de cada questão.</p>
@@ -429,7 +349,6 @@ function renderResultado(t, gabarito) {
       prova_titulo: t.prova_titulo, nota: t.nota, acertos: t.acertos, total: t.total,
       aprovado: t.aprovado, instrutor_nome: t.instrutor_nome, realizado_em: t.realizado_em,
       nota_minima: estado.prova.nota_minima ?? 7, codigo, area: estado.perfil.area,
-      url_verificacao: urlVerificacao,
     });
     travarBtn(e.target, false, "Baixar certificado (PDF)");
   });
