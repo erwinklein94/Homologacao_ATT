@@ -366,6 +366,20 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
 .grafico-card { background: #fff; border: 1px solid var(--borda); border-radius: var(--rumo-raio); box-shadow: var(--rumo-sombra); padding: 1.2rem; }
 .grafico-card h3 { margin-bottom: .9rem; }
 .grafico-card__canvas { position: relative; height: 280px; }
+.grafico-card[data-modal-ligado]:hover { box-shadow: var(--rumo-sombra-hover); }
+
+/* Modal de gráfico ampliado (Painel) */
+.modal-grafico { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; }
+.modal-grafico.hidden { display: none; }
+.modal-grafico__fundo { position: absolute; inset: 0; background: rgba(0, 30, 54, .55); }
+.modal-grafico__card {
+  position: relative; background: #fff; border-radius: var(--rumo-raio);
+  box-shadow: var(--rumo-sombra-hover); padding: 1.4rem;
+  width: min(1100px, 94vw);
+}
+.modal-grafico__topo { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .9rem; }
+.modal-grafico__topo h3 { margin: 0; }
+.modal-grafico__canvas { position: relative; height: min(70vh, 640px); }
 
 /* =====================================================================
    Editor de questões (admin)

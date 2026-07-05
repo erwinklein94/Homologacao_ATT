@@ -20,6 +20,7 @@ const painel = {
   alunos: [],
   historicoAlivio: [],
   charts: {},
+  chartConfigs: {},   // cópia das configs para o modal de gráfico ampliado
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -498,11 +499,84 @@ function novoGrafico(id, config) {
   const el = document.getElementById(id);
   if (!el) return;
   if (painel.charts[id]) painel.charts[id].destroy();
+  // Guarda uma cópia da config ANTES de entregá-la ao Chart.js (que altera o
+  // objeto internamente); é ela que alimenta o gráfico ampliado do modal.
+  painel.chartConfigs[id] = clonarConfigGrafico(config);
   painel.charts[id] = new Chart(el, config);
+
+  // Clique no card abre o mesmo gráfico ampliado em um modal.
+  const card = el.closest(".grafico-card");
+  if (card && !card.dataset.modalLigado) {
+    card.dataset.modalLigado = "1";
+    card.style.cursor = "zoom-in";
+    card.title = "Clique para ampliar";
+    card.addEventListener("click", () => {
+      const titulo = card.querySelector("h3")?.textContent || "Gráfico";
+      abrirModalGrafico(id, titulo);
+    });
+  }
 }
 function destruirGraficos() {
   Object.values(painel.charts).forEach((chart) => chart?.destroy?.());
   painel.charts = {};
+  painel.chartConfigs = {};
+}
+
+// ------------------------------------------------ modal de gráfico ampliado
+// Clona a config preservando as funções (callbacks de tooltip etc.) por
+// referência — structuredClone não suporta funções.
+function clonarConfigGrafico(v) {
+  if (Array.isArray(v)) return v.map(clonarConfigGrafico);
+  if (v && typeof v === "object") {
+    const o = {};
+    for (const k in v) o[k] = clonarConfigGrafico(v[k]);
+    return o;
+  }
+  return v;
+}
+
+let chartModal = null;
+
+function garantirModalGrafico() {
+  if (document.querySelector("[data-modal-grafico]")) return;
+  const el = document.createElement("div");
+  el.className = "modal-grafico hidden";
+  el.setAttribute("data-modal-grafico", "");
+  el.innerHTML = `
+    <div class="modal-grafico__fundo" data-modal-fechar></div>
+    <div class="modal-grafico__card" role="dialog" aria-modal="true" aria-label="Gráfico ampliado">
+      <div class="modal-grafico__topo">
+        <h3 data-modal-titulo></h3>
+        <button type="button" class="btn btn--ghost btn--sm" data-modal-fechar>Fechar ✕</button>
+      </div>
+      <div class="modal-grafico__canvas"><canvas id="chart-modal"></canvas></div>
+    </div>`;
+  document.body.appendChild(el);
+  el.querySelectorAll("[data-modal-fechar]").forEach((b) =>
+    b.addEventListener("click", fecharModalGrafico));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") fecharModalGrafico();
+  });
+}
+
+function abrirModalGrafico(id, titulo) {
+  const cfg = painel.chartConfigs[id];
+  if (!cfg) return;
+  garantirModalGrafico();
+  const modal = document.querySelector("[data-modal-grafico]");
+  modal.querySelector("[data-modal-titulo]").textContent = titulo;
+  modal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  if (chartModal) { chartModal.destroy(); chartModal = null; }
+  chartModal = new Chart(document.getElementById("chart-modal"), clonarConfigGrafico(cfg));
+}
+
+function fecharModalGrafico() {
+  const modal = document.querySelector("[data-modal-grafico]");
+  if (!modal || modal.classList.contains("hidden")) return;
+  modal.classList.add("hidden");
+  document.body.style.overflow = "";
+  if (chartModal) { chartModal.destroy(); chartModal = null; }
 }
 const eixoInteiro = { ticks: { precision: 0 }, beginAtZero: true };
 
