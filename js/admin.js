@@ -554,6 +554,7 @@ function desenharTabelaHistorico(dados, f) {
     return `<tr>
       <td class="nowrap">${fmtDataHist(r.data_inicio)}</td>
       <td>${escaparHtml(r.participante)}</td>
+      <td style="max-width:260px">${escaparHtml(r.especificacao || "—")}</td>
       <td>${escaparHtml(r.funcao || "—")}</td>
       <td>${escaparHtml(r.empresa || "—")}</td>
       <td class="nowrap">${escaparHtml(r.matricula || "—")}</td>
@@ -573,7 +574,7 @@ function desenharTabelaHistorico(dados, f) {
     <div class="tabela-wrap">
       <table class="tabela">
         <thead><tr>
-          <th>Data</th><th>Participante</th><th>Função</th><th>Empresa</th>
+          <th>Data</th><th>Participante</th><th>Especificação técnica / orientação</th><th>Função</th><th>Empresa</th>
           <th>Matrícula/CPF</th><th>Local</th><th>Gerência</th><th>Modalidade</th>
           <th>Instrutor/Fiscal</th><th>Nota</th><th>Resultado</th><th>Origem</th><th>Ações</th>
         </tr></thead>
