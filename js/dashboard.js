@@ -74,8 +74,8 @@ async function carregarHistoricoAlivio(area, subarea) {
     .order("data_inicio", { ascending: false });
 
   if (error) {
-    console.warn("Histórico de Alívio via Supabase indisponível; usando snapshot local:", error.message);
-    return normalizarHistoricoLegado(window.HISTORICO_ALIVIO_TENSAO || []);
+    console.error("Erro ao carregar o histórico (rode sql/historico-alivio-tensao.sql):", error.message);
+    return [];
   }
   return normalizarHistoricoLegado(data || []);
 }

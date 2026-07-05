@@ -57,33 +57,26 @@ async function carregarTentativas() {
   adm.tentativas = (data || []).filter((t) => !adm.subarea || subareaDoRegistro(t) === adm.subarea);
 }
 
-// Histórico legado importado da planilha, agora servido pelo Supabase.
-// Existe apenas na área de Alívio de Tensão (tabela public.historico_alivio_tensao).
+// Histórico importado da planilha, mantido no Supabase e editável pelo
+// administrador (tabela public.historico_alivio_tensao).
+// Existe apenas na área de Alívio de Tensão.
 async function carregarHistoricoAlivio() {
   // O histórico da planilha é de ATT (Alívio de Tensão Térmica); os demais
   // treinamentos começam sem legado e mostram só as provas do sistema.
   if (adm.perfil?.area !== "alivio_tensao" || adm.subarea !== "alivio_termico") { adm.historico = []; return; }
 
-  // Remove do banco os registros legados sem nota, conforme solicitado.
-  // Se a tabela ainda não existir, o erro será tratado no SELECT abaixo e o snapshot local será usado.
-  await sb.from("historico_alivio_tensao").delete().is("nota", null);
-
   const { data, error } = await sb
     .from("historico_alivio_tensao")
     .select("*")
-    .not("nota", "is", null)
     .order("data_inicio", { ascending: false });
   if (error) {
-    // Tabela ainda não criada no Supabase → usa o snapshot embutido como fallback
-    // (js/historico-alivio-tensao.js). Rode sql/historico-alivio-tensao.sql para usar o banco.
-    console.warn("Histórico via Supabase indisponível, usando snapshot local:", error.message);
-    adm.historico = (window.HISTORICO_ALIVIO_TENSAO || []).filter((r) => r.nota !== null && r.nota !== undefined && r.nota !== "");
+    console.error("Erro ao carregar o histórico (rode sql/historico-alivio-tensao.sql):", error.message);
+    adm.historico = [];
     return;
   }
-  // O PostgREST pode devolver numeric como texto; garante nota numérica e mantém apenas registros com nota.
+  // O PostgREST pode devolver numeric como texto; garante nota numérica.
   adm.historico = (data || [])
-    .map((r) => ({ ...r, nota: (r.nota === null || r.nota === undefined || r.nota === "") ? null : Number(r.nota) }))
-    .filter((r) => typeof r.nota === "number" && !isNaN(r.nota));
+    .map((r) => ({ ...r, nota: (r.nota === null || r.nota === undefined || r.nota === "") ? null : Number(r.nota) }));
 }
 
 // --------------------------------------------------------------- abas
@@ -184,8 +177,9 @@ function desenharTabelaAtividades(fAluno, fProva, fResult) {
 
 // =====================================================================
 // 1b) HISTÓRICO — somente Alívio de Tensão
-// Reúne o histórico legado importado da planilha (window.HISTORICO_ALIVIO_TENSAO)
-// com as provas novas aplicadas pelos fiscais aqui no sistema (adm.tentativas).
+// Reúne o histórico importado da planilha (tabela historico_alivio_tensao,
+// editável pelo administrador) com as provas novas aplicadas pelos fiscais
+// aqui no sistema (adm.tentativas).
 // =====================================================================
 function configurarHistorico() {
   if (adm.perfil?.area !== "alivio_tensao") return;   // aba existe só nesta área
@@ -254,9 +248,94 @@ function renderHistorico() {
       <div>
         <p class="muted" style="margin:0 0 1rem">
           Histórico do treinamento <b>${escaparHtml(getSubareaMeta(adm.subarea).nome)}</b>: os registros importados da planilha
-          (quando existirem) e as provas aplicadas pelos fiscais aqui no sistema, reunidos em um só lugar.
+          (editáveis) e as provas aplicadas pelos fiscais aqui no sistema, reunidos em um só lugar.
         </p>
         <div class="kpis" data-hist-kpis></div>
+      </div>
+
+      <div class="card card--chanfro stack hidden" data-hist-form-card>
+        <h2 style="margin:0" data-hist-form-titulo>Novo registro do histórico</h2>
+        <form data-hist-form novalidate>
+          <div class="row">
+            <div class="field" style="flex:2;min-width:240px">
+              <label for="hf-participante">Participante</label>
+              <input id="hf-participante" class="input" name="participante" required placeholder="Nome do participante" />
+            </div>
+            <div class="field" style="min-width:170px">
+              <label for="hf-matricula">Matrícula / CPF</label>
+              <input id="hf-matricula" class="input" name="matricula" placeholder="Matrícula ou CPF" />
+            </div>
+            <div class="field" style="flex:1;min-width:170px">
+              <label for="hf-funcao">Função</label>
+              <input id="hf-funcao" class="input" name="funcao" placeholder="Ex.: Encarregado" />
+            </div>
+            <div class="field" style="min-width:150px">
+              <label for="hf-empresa">Empresa</label>
+              <input id="hf-empresa" class="input" name="empresa" placeholder="Ex.: Rumo" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="field" style="flex:2;min-width:280px">
+              <label for="hf-especificacao">Especificação técnica / orientação</label>
+              <input id="hf-especificacao" class="input" name="especificacao" placeholder="Ex.: MAN-VP-L-PRO-TR-0036-01 – ALÍVIO DE TENSÕES…" />
+            </div>
+            <div class="field" style="min-width:140px">
+              <label for="hf-modalidade">Modalidade</label>
+              <select id="hf-modalidade" class="select" name="modalidade">
+                <option value="TEÓRICO">Teórico</option>
+                <option value="PRÁTICO">Prático</option>
+              </select>
+            </div>
+            <div class="field" style="min-width:160px">
+              <label for="hf-categoria">Categoria</label>
+              <select id="hf-categoria" class="select" name="categoria">
+                <option value="HOMOLOGAÇÃO">Homologação</option>
+                <option value="CAPACITAÇÃO">Capacitação</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div class="field" style="min-width:160px">
+              <label for="hf-data-inicio">Data início</label>
+              <input id="hf-data-inicio" class="input" type="date" name="data_inicio" required />
+            </div>
+            <div class="field" style="min-width:160px">
+              <label for="hf-data-fim">Data fim</label>
+              <input id="hf-data-fim" class="input" type="date" name="data_fim" />
+            </div>
+            <div class="field" style="min-width:120px">
+              <label for="hf-carga">Carga horária</label>
+              <input id="hf-carga" class="input" name="carga_horaria" placeholder="Ex.: 8h" />
+            </div>
+            <div class="field" style="flex:1;min-width:170px">
+              <label for="hf-local">Local</label>
+              <input id="hf-local" class="input" name="local" placeholder="Ex.: ARARAQUARA/SP" />
+            </div>
+            <div class="field" style="min-width:140px">
+              <label for="hf-gerencia">Gerência</label>
+              <input id="hf-gerencia" class="input" name="gerencia" placeholder="Ex.: SP NORTE" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="field" style="min-width:120px">
+              <label for="hf-nota">Nota</label>
+              <input id="hf-nota" class="input" type="number" step="0.01" min="0" max="10" name="nota" required placeholder="0 a 10" />
+            </div>
+            <div class="field" style="min-width:160px">
+              <label for="hf-aprovacao">Resultado</label>
+              <select id="hf-aprovacao" class="select" name="aprovacao">
+                <option value="APROVADO">Aprovado</option>
+                <option value="REPROVADO">Reprovado</option>
+              </select>
+            </div>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn--success" type="submit" data-hist-salvar>Salvar registro</button>
+            <button class="btn btn--ghost" type="button" data-hist-cancelar>Cancelar</button>
+            <span class="spacer"></span>
+            <span class="muted small" data-hist-status></span>
+          </div>
+        </form>
       </div>
 
       <div class="toolbar">
@@ -292,6 +371,9 @@ function renderHistorico() {
             <option value="Sistema">Sistema</option>
           </select>
         </div>
+        <div class="field" style="margin:0;align-self:flex-end">
+          <button class="btn btn--primary" type="button" data-hist-novo>Adicionar registro</button>
+        </div>
       </div>
       <div data-hist-tabela></div>
     </div>`;
@@ -308,7 +390,117 @@ function renderHistorico() {
   host.querySelector("[data-h-modalidade]").addEventListener("change", aplicar);
   host.querySelector("[data-h-result]").addEventListener("change", aplicar);
   host.querySelector("[data-h-origem]").addEventListener("change", aplicar);
+
+  host.querySelector("[data-hist-novo]").addEventListener("click", () => abrirFormHistorico(null));
+  host.querySelector("[data-hist-cancelar]").addEventListener("click", fecharFormHistorico);
+  host.querySelector("[data-hist-form]").addEventListener("submit", salvarRegistroHistorico);
   aplicar();
+}
+
+// ------------------------- edição do histórico (registros da planilha) ----
+let histEditandoId = null;
+
+function abrirFormHistorico(id) {
+  histEditandoId = id || null;
+  const card = document.querySelector("[data-hist-form-card]");
+  const form = document.querySelector("[data-hist-form]");
+  const titulo = document.querySelector("[data-hist-form-titulo]");
+  if (!card || !form) return;
+
+  form.reset();
+  document.querySelector("[data-hist-status]").textContent = "";
+
+  if (id) {
+    const r = (adm.historico || []).find((x) => x.id === id);
+    if (!r) return;
+    titulo.textContent = `Editar registro — ${r.participante || ""}`;
+    form.participante.value = r.participante || "";
+    form.matricula.value = r.matricula || "";
+    form.funcao.value = r.funcao || "";
+    form.empresa.value = r.empresa || "";
+    form.especificacao.value = r.especificacao || "";
+    form.modalidade.value = (r.modalidade || "TEÓRICO").toUpperCase();
+    form.categoria.value = (r.categoria || "HOMOLOGAÇÃO").toUpperCase();
+    form.data_inicio.value = (r.data_inicio || "").slice(0, 10);
+    form.data_fim.value = (r.data_fim || "").slice(0, 10);
+    form.carga_horaria.value = r.carga_horaria || "";
+    form.local.value = r.local || "";
+    form.gerencia.value = r.gerencia || "";
+    form.nota.value = (r.nota === null || r.nota === undefined) ? "" : r.nota;
+    form.aprovacao.value = r.aprovacao === "REPROVADO" ? "REPROVADO" : "APROVADO";
+  } else {
+    titulo.textContent = "Novo registro do histórico";
+  }
+
+  card.classList.remove("hidden");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function fecharFormHistorico() {
+  histEditandoId = null;
+  const card = document.querySelector("[data-hist-form-card]");
+  if (card) card.classList.add("hidden");
+}
+
+async function salvarRegistroHistorico(e) {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const status = document.querySelector("[data-hist-status]");
+  const btn = form.querySelector("[data-hist-salvar]");
+
+  const participante = form.participante.value.trim();
+  const dataInicio = form.data_inicio.value;
+  const nota = parseFloat(form.nota.value);
+
+  if (!participante) { status.textContent = "Informe o participante."; form.participante.focus(); return; }
+  if (!dataInicio) { status.textContent = "Informe a data de início."; form.data_inicio.focus(); return; }
+  if (isNaN(nota) || nota < 0 || nota > 10) { status.textContent = "Informe uma nota entre 0 e 10."; form.nota.focus(); return; }
+
+  const registro = {
+    participante,
+    matricula: form.matricula.value.trim(),
+    funcao: form.funcao.value.trim(),
+    empresa: form.empresa.value.trim(),
+    especificacao: form.especificacao.value.trim(),
+    modalidade: form.modalidade.value,
+    categoria: form.categoria.value,
+    data_inicio: dataInicio,
+    data_fim: form.data_fim.value || dataInicio,
+    carga_horaria: form.carga_horaria.value.trim(),
+    local: form.local.value.trim(),
+    gerencia: form.gerencia.value.trim(),
+    nota,
+    aprovacao: form.aprovacao.value,
+  };
+
+  btn.disabled = true;
+  status.textContent = "Salvando…";
+
+  const q = histEditandoId
+    ? sb.from("historico_alivio_tensao").update({ ...registro, atualizado_em: new Date().toISOString() }).eq("id", histEditandoId)
+    : sb.from("historico_alivio_tensao").insert(registro);
+  const { error } = await q;
+
+  btn.disabled = false;
+  if (error) {
+    status.textContent = "Erro ao salvar: " + error.message;
+    return;
+  }
+
+  fecharFormHistorico();
+  await carregarHistoricoAlivio();
+  renderHistorico();
+}
+
+async function excluirRegistroHistorico(id) {
+  const r = (adm.historico || []).find((x) => x.id === id);
+  if (!r) return;
+  const ok = confirm(`Excluir do histórico o registro de ${r.participante || "participante"} (${fmtDataHist(r.data_inicio)})? Essa ação não pode ser desfeita.`);
+  if (!ok) return;
+  const { error } = await sb.from("historico_alivio_tensao").delete().eq("id", id);
+  if (error) { alert("Erro ao excluir: " + error.message); return; }
+  await carregarHistoricoAlivio();
+  renderHistorico();
 }
 
 function desenharTabelaHistorico(dados, f) {
@@ -353,6 +545,12 @@ function desenharTabelaHistorico(dados, f) {
     const nota = (typeof r.nota === "number" && !isNaN(r.nota)) ? `<b>${fmtNota(r.nota)}</b>` : '<span class="muted">—</span>';
     const modalidade = r.modalidade && r.modalidade !== "—"
       ? r.modalidade.charAt(0) + r.modalidade.slice(1).toLowerCase() : "—";
+    // Só os registros da planilha (com id na tabela do histórico) são editáveis;
+    // os do sistema vêm de tentativas e são corrigidos pelo próprio fluxo de prova.
+    const acoes = (r.origem === "Planilha" && r.id)
+      ? `<button class="btn btn--ghost btn--sm" data-hist-editar="${r.id}">Editar</button>
+         <button class="btn btn--danger btn--sm" data-hist-excluir="${r.id}">Excluir</button>`
+      : '<span class="muted small">—</span>';
     return `<tr>
       <td class="nowrap">${fmtDataHist(r.data_inicio)}</td>
       <td>${escaparHtml(r.participante)}</td>
@@ -366,6 +564,7 @@ function desenharTabelaHistorico(dados, f) {
       <td class="nowrap">${nota}</td>
       <td>${badgeRes}</td>
       <td>${badgeOrig}</td>
+      <td class="nowrap">${acoes}</td>
     </tr>`;
   }).join("");
 
@@ -376,11 +575,16 @@ function desenharTabelaHistorico(dados, f) {
         <thead><tr>
           <th>Data</th><th>Participante</th><th>Função</th><th>Empresa</th>
           <th>Matrícula/CPF</th><th>Local</th><th>Gerência</th><th>Modalidade</th>
-          <th>Instrutor/Fiscal</th><th>Nota</th><th>Resultado</th><th>Origem</th>
+          <th>Instrutor/Fiscal</th><th>Nota</th><th>Resultado</th><th>Origem</th><th>Ações</th>
         </tr></thead>
         <tbody>${corpo}</tbody>
       </table>
     </div>`;
+
+  host.querySelectorAll("[data-hist-editar]").forEach((b) =>
+    b.addEventListener("click", () => abrirFormHistorico(b.dataset.histEditar)));
+  host.querySelectorAll("[data-hist-excluir]").forEach((b) =>
+    b.addEventListener("click", () => excluirRegistroHistorico(b.dataset.histExcluir)));
 }
 
 // =====================================================================
