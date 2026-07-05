@@ -445,7 +445,7 @@ function desenharTabelaHistorico(dados, f) {
 
   host.innerHTML = `
     <p class="muted small" style="margin:.2rem 0 .6rem">${linhas.length} registro(s)</p>
-    <div class="tabela-wrap">
+    <div class="tabela-wrap tabela-wrap--compacta">
       <table class="tabela">
         <thead><tr>
           <th>Data</th><th>Participante</th><th>E-mail</th><th>Especificação técnica / orientação</th><th>Função</th><th>Empresa</th>

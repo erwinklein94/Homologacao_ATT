@@ -51,9 +51,6 @@
 
 * { box-sizing: border-box; }
 
-/* Zoom out global (85%): cabe mais informação na tela em todas as páginas. */
-html { zoom: 0.85; }
-
 html, body { height: 100%; }
 
 body {
@@ -245,6 +242,14 @@ a  { color: var(--rumo-azul-claro); }
    Tabelas
    ===================================================================== */
 .tabela-wrap { overflow-x: auto; border: 1px solid var(--borda); border-radius: var(--rumo-raio); }
+
+/* Versão compacta (tabela do Histórico): letras e espaçamentos menores para
+   caber mais colunas na tela e reduzir a rolagem horizontal. */
+.tabela-wrap--compacta .tabela { font-size: .72rem; }
+.tabela-wrap--compacta .tabela thead th { padding: .45rem .5rem; white-space: nowrap; }
+.tabela-wrap--compacta .tabela tbody td { padding: .4rem .5rem; }
+.tabela-wrap--compacta .badge { font-size: .66rem; padding: .14rem .45rem; }
+.tabela-wrap--compacta .btn--sm { font-size: .68rem; padding: .3rem .55rem; }
 table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; background: #fff; }
 .tabela thead th {
   text-align: left; background: var(--rumo-azul); color: #fff; font-weight: 700;
