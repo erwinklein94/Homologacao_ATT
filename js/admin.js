@@ -9,8 +9,7 @@ const adm = {
   perfil: null,
   subarea: null,       // treinamento selecionado (só em alivio_tensao)
   provas: [],          // lista de provas (id, codigo, titulo, ...)
-  tentativas: [],      // todas as tentativas (admin enxerga tudo via RLS)
-  historico: [],       // histórico legado de Alívio de Tensão (tabela historico_alivio_tensao)
+  historico: [],       // histórico unificado (tabela historico_alivio_tensao)
   provaSel: null,      // prova aberta no editor
   questoes: [],        // questões da prova aberta (estado editável em memória)
 };
@@ -27,10 +26,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   ligarAbas();
-  await Promise.all([carregarProvas(), carregarTentativas(), carregarHistoricoAlivio()]);
+  await Promise.all([carregarProvas(), carregarHistoricoAlivio()]);
 
   conferirSeed();
-  renderAtividades();
   renderListaProvas();
   configurarHistorico();
 });
@@ -45,16 +43,6 @@ async function carregarProvas() {
   if (error) { console.error(error); adm.provas = []; return; }
   // Em Alívio de Tensão, mostra só as provas do treinamento selecionado.
   adm.provas = (data || []).filter((p) => !adm.subarea || subareaDoRegistro(p) === adm.subarea);
-}
-
-async function carregarTentativas() {
-  const { data, error } = await sb
-    .from("tentativas")
-    .select("*")
-    .eq("area", adm.perfil.area)
-    .order("realizado_em", { ascending: false });
-  if (error) { console.error(error); adm.tentativas = []; return; }
-  adm.tentativas = (data || []).filter((t) => !adm.subarea || subareaDoRegistro(t) === adm.subarea);
 }
 
 // Histórico importado da planilha, mantido no Supabase e editável pelo
@@ -91,134 +79,14 @@ function ligarAbas() {
 }
 
 // =====================================================================
-// 1) ATIVIDADES DOS ALUNOS
-// =====================================================================
-function renderAtividades() {
-  const host = document.querySelector("[data-atividades]");
-  const provasUnicas = [...new Set(adm.tentativas.map((t) => t.prova_titulo))].sort();
-  const opcoesProva = ['<option value="">Todas as provas</option>']
-    .concat(provasUnicas.map((p) => `<option value="${escaparHtml(p)}">${escaparHtml(p)}</option>`))
-    .join("");
-
-  host.innerHTML = `
-    <div class="card stack">
-      <div class="toolbar">
-        <div class="field" style="margin:0;flex:1;min-width:200px">
-          <label for="f-aluno">Buscar aluno</label>
-          <input id="f-aluno" class="input" placeholder="Nome do aluno…" data-filtro-aluno />
-        </div>
-        <div class="field" style="margin:0;min-width:220px">
-          <label for="f-prova">Prova</label>
-          <select id="f-prova" class="select" data-filtro-prova>${opcoesProva}</select>
-        </div>
-        <div class="field" style="margin:0;min-width:170px">
-          <label for="f-result">Resultado</label>
-          <select id="f-result" class="select" data-filtro-result>
-            <option value="">Todos</option>
-            <option value="ok">Aprovados</option>
-            <option value="reprov">Reprovados</option>
-          </select>
-        </div>
-      </div>
-      <div data-tabela-atividades></div>
-    </div>`;
-
-  const aplicar = () => desenharTabelaAtividades(
-    host.querySelector("[data-filtro-aluno]").value.trim().toLowerCase(),
-    host.querySelector("[data-filtro-prova]").value,
-    host.querySelector("[data-filtro-result]").value
-  );
-  host.querySelector("[data-filtro-aluno]").addEventListener("input", aplicar);
-  host.querySelector("[data-filtro-prova]").addEventListener("change", aplicar);
-  host.querySelector("[data-filtro-result]").addEventListener("change", aplicar);
-  aplicar();
-}
-
-function desenharTabelaAtividades(fAluno, fProva, fResult) {
-  const host = document.querySelector("[data-tabela-atividades]");
-  let linhas = adm.tentativas.filter((t) => {
-    if (fAluno && !(t.aluno_nome || "").toLowerCase().includes(fAluno)) return false;
-    if (fProva && t.prova_titulo !== fProva) return false;
-    if (fResult === "ok" && !t.aprovado) return false;
-    if (fResult === "reprov" && t.aprovado) return false;
-    return true;
-  });
-
-  if (linhas.length === 0) {
-    host.innerHTML = `<p class="muted center" style="padding:1.4rem 0">Nenhuma tentativa encontrada com esses filtros.</p>`;
-    return;
-  }
-
-  const corpo = linhas.map((t) => {
-    const badge = t.aprovado
-      ? '<span class="badge badge--ok badge--dot">Aprovado</span>'
-      : '<span class="badge badge--erro badge--dot">Reprovado</span>';
-    return `<tr>
-      <td>${escaparHtml(t.aluno_nome)}</td>
-      <td>${escaparHtml(t.prova_titulo)}</td>
-      <td><b>${fmtNota(t.nota)}</b> <span class="muted small">(${t.acertos}/${t.total})</span></td>
-      <td>${badge}</td>
-      <td>${escaparHtml(t.instrutor_nome)}</td>
-      <td class="nowrap">${fmtData(t.realizado_em)}</td>
-    </tr>`;
-  }).join("");
-
-  host.innerHTML = `
-    <p class="muted small" style="margin:.2rem 0 .6rem">${linhas.length} registro(s)</p>
-    <div class="tabela-wrap">
-      <table class="tabela">
-        <thead><tr>
-          <th>Aluno</th><th>Prova</th><th>Nota</th><th>Resultado</th><th>Instrutor</th><th>Data</th>
-        </tr></thead>
-        <tbody>${corpo}</tbody>
-      </table>
-    </div>`;
-}
-
-// =====================================================================
-// 1b) HISTÓRICO — somente Alívio de Tensão
-// Reúne o histórico importado da planilha (tabela historico_alivio_tensao,
-// editável pelo administrador) com as provas novas aplicadas pelos fiscais
-// aqui no sistema (adm.tentativas).
+// 1) HISTÓRICO — fonte única de registros
+// A tabela historico_alivio_tensao guarda tanto os registros importados
+// da planilha quanto as provas aplicadas no sistema (um gatilho no banco
+// grava cada tentativa nova aqui automaticamente). Tudo é editável.
 // =====================================================================
 function configurarHistorico() {
-  if (adm.perfil?.area !== "alivio_tensao") return;   // aba existe só nesta área
-  const btn = document.querySelector("[data-aba-historico-btn]");
-  if (btn) btn.classList.remove("hidden");
+  if (adm.perfil?.area !== "alivio_tensao") return;
   renderHistorico();
-}
-
-// Converte uma tentativa do sistema para o mesmo formato do histórico da planilha.
-function tentativaParaHistorico(t) {
-  return {
-    especificacao: t.prova_titulo || "—",
-    modalidade: "—",
-    categoria: "—",
-    data_inicio: t.realizado_em || null,
-    data_fim: t.realizado_em || null,
-    carga_horaria: "—",
-    local: "—",
-    gerencia: "—",
-    participante: t.aluno_nome || "—",
-    funcao: "—",
-    matricula: "—",
-    empresa: "—",
-    nota: (t.nota === null || t.nota === undefined) ? null : Number(t.nota),
-    aprovacao: t.aprovado ? "APROVADO" : "REPROVADO",
-    instrutor: t.instrutor_nome || "—",
-    origem: "Sistema",
-  };
-}
-
-function montarHistoricoCompleto() {
-  const legado = (adm.historico || []).map((r) => ({
-    ...r, instrutor: "—", origem: "Planilha",
-  }));
-  const doSistema = adm.tentativas.map(tentativaParaHistorico);
-  const todos = legado.concat(doSistema);
-  // Mais recentes primeiro (datas em ISO comparam corretamente como texto).
-  todos.sort((a, b) => String(b.data_inicio || "").localeCompare(String(a.data_inicio || "")));
-  return todos;
 }
 
 // dd/mm/aaaa sem depender de fuso (as datas legadas são só data, sem hora).
@@ -231,7 +99,8 @@ function fmtDataHist(v) {
 function renderHistorico() {
   const host = document.querySelector("[data-historico]");
   if (!host) return;
-  const dados = montarHistoricoCompleto();
+  // Fonte única: a tabela do banco (planilha + provas do sistema, sem distinção).
+  const dados = adm.historico || [];
 
   // Empresas (deduplicadas por maiúsculas) para o filtro.
   const empresasMap = new Map();
@@ -247,8 +116,8 @@ function renderHistorico() {
     <div class="card stack">
       <div>
         <p class="muted" style="margin:0 0 1rem">
-          Histórico do treinamento <b>${escaparHtml(getSubareaMeta(adm.subarea).nome)}</b>: os registros importados da planilha
-          (editáveis) e as provas aplicadas pelos fiscais aqui no sistema, reunidos em um só lugar.
+          Histórico do treinamento <b>${escaparHtml(getSubareaMeta(adm.subarea).nome)}</b>: todos os registros em um só lugar —
+          as provas feitas pelos alunos no site entram aqui automaticamente e tudo pode ser editado.
         </p>
         <div class="kpis" data-hist-kpis></div>
       </div>
@@ -260,6 +129,10 @@ function renderHistorico() {
             <div class="field" style="flex:2;min-width:240px">
               <label for="hf-participante">Participante</label>
               <input id="hf-participante" class="input" name="participante" required placeholder="Nome do participante" />
+            </div>
+            <div class="field" style="flex:1;min-width:220px">
+              <label for="hf-email">E-mail</label>
+              <input id="hf-email" class="input" type="email" name="email" placeholder="email@empresa.com" />
             </div>
             <div class="field" style="min-width:170px">
               <label for="hf-matricula">Matrícula / CPF</label>
@@ -335,6 +208,10 @@ function renderHistorico() {
                 <option value="REPROVADO">Reprovado</option>
               </select>
             </div>
+            <div class="field" style="flex:1;min-width:200px">
+              <label for="hf-instrutor">Instrutor / Fiscal</label>
+              <input id="hf-instrutor" class="input" name="instrutor" placeholder="Nome do instrutor" />
+            </div>
           </div>
           <div class="toolbar">
             <button class="btn btn--success" type="submit" data-hist-salvar>Salvar registro</button>
@@ -370,14 +247,6 @@ function renderHistorico() {
             <option value="reprov">Reprovados</option>
           </select>
         </div>
-        <div class="field" style="margin:0;min-width:170px">
-          <label for="h-origem">Origem</label>
-          <select id="h-origem" class="select" data-h-origem>
-            <option value="">Todas</option>
-            <option value="Planilha">Planilha histórica</option>
-            <option value="Sistema">Sistema</option>
-          </select>
-        </div>
         <div class="field" style="margin:0;align-self:flex-end">
           <button class="btn btn--primary" type="button" data-hist-novo>Adicionar registro</button>
         </div>
@@ -390,13 +259,11 @@ function renderHistorico() {
     empresa: host.querySelector("[data-h-empresa]").value,
     modalidade: host.querySelector("[data-h-modalidade]").value,
     result: host.querySelector("[data-h-result]").value,
-    origem: host.querySelector("[data-h-origem]").value,
   });
   host.querySelector("[data-h-part]").addEventListener("input", aplicar);
   host.querySelector("[data-h-empresa]").addEventListener("change", aplicar);
   host.querySelector("[data-h-modalidade]").addEventListener("change", aplicar);
   host.querySelector("[data-h-result]").addEventListener("change", aplicar);
-  host.querySelector("[data-h-origem]").addEventListener("change", aplicar);
 
   host.querySelector("[data-hist-novo]").addEventListener("click", () => abrirFormHistorico(null));
   host.querySelector("[data-hist-cancelar]").addEventListener("click", fecharFormHistorico);
@@ -422,9 +289,11 @@ function abrirFormHistorico(id) {
     if (!r) return;
     titulo.textContent = `Editar registro — ${r.participante || ""}`;
     form.participante.value = r.participante || "";
+    form.email.value = r.email || "";
     form.matricula.value = r.matricula || "";
     form.funcao.value = r.funcao || "";
     form.empresa.value = r.empresa || "";
+    form.instrutor.value = r.instrutor || "";
     form.especificacao.value = r.especificacao || "";
     form.modalidade.value = (r.modalidade || "TEÓRICO").toUpperCase();
     form.categoria.value = (r.categoria || "HOMOLOGAÇÃO").toUpperCase();
@@ -467,9 +336,11 @@ async function salvarRegistroHistorico(e) {
 
   const registro = {
     participante,
+    email: form.email.value.trim(),
     matricula: form.matricula.value.trim(),
     funcao: form.funcao.value.trim(),
     empresa: form.empresa.value.trim(),
+    instrutor: form.instrutor.value.trim(),
     especificacao: form.especificacao.value.trim(),
     modalidade: form.modalidade.value,
     categoria: form.categoria.value,
@@ -520,7 +391,6 @@ function desenharTabelaHistorico(dados, f) {
     if (f.modalidade && (r.modalidade || "").toUpperCase() !== f.modalidade) return false;
     if (f.result === "ok" && r.aprovacao !== "APROVADO") return false;
     if (f.result === "reprov" && r.aprovacao !== "REPROVADO") return false;
-    if (f.origem && r.origem !== f.origem) return false;
     return true;
   });
 
@@ -549,21 +419,13 @@ function desenharTabelaHistorico(dados, f) {
       r.aprovacao === "APROVADO" ? '<span class="badge badge--ok badge--dot">Aprovado</span>' :
       r.aprovacao === "REPROVADO" ? '<span class="badge badge--erro badge--dot">Reprovado</span>' :
       '<span class="badge badge--dot">—</span>';
-    const badgeOrig = r.origem === "Sistema"
-      ? '<span class="badge badge--ok badge--dot">Sistema</span>'
-      : '<span class="badge badge--dot">Planilha</span>';
     const nota = (typeof r.nota === "number" && !isNaN(r.nota)) ? `<b>${fmtNota(r.nota)}</b>` : '<span class="muted">—</span>';
     const modalidade = r.modalidade && r.modalidade !== "—"
       ? r.modalidade.charAt(0) + r.modalidade.slice(1).toLowerCase() : "—";
-    // Só os registros da planilha (com id na tabela do histórico) são editáveis;
-    // os do sistema vêm de tentativas e são corrigidos pelo próprio fluxo de prova.
-    const acoes = (r.origem === "Planilha" && r.id)
-      ? `<button class="btn btn--ghost btn--sm" data-hist-editar="${r.id}">Editar</button>
-         <button class="btn btn--danger btn--sm" data-hist-excluir="${r.id}">Excluir</button>`
-      : '<span class="muted small">—</span>';
     return `<tr>
       <td class="nowrap">${fmtDataHist(r.data_inicio)}</td>
       <td>${escaparHtml(r.participante)}</td>
+      <td>${escaparHtml(r.email || "—")}</td>
       <td style="max-width:260px">${escaparHtml(r.especificacao || "—")}</td>
       <td>${escaparHtml(r.funcao || "—")}</td>
       <td>${escaparHtml(r.empresa || "—")}</td>
@@ -574,8 +436,10 @@ function desenharTabelaHistorico(dados, f) {
       <td>${escaparHtml(r.instrutor || "—")}</td>
       <td class="nowrap">${nota}</td>
       <td>${badgeRes}</td>
-      <td>${badgeOrig}</td>
-      <td class="nowrap">${acoes}</td>
+      <td class="nowrap">
+        <button class="btn btn--ghost btn--sm" data-hist-editar="${r.id}">Editar</button>
+        <button class="btn btn--danger btn--sm" data-hist-excluir="${r.id}">Excluir</button>
+      </td>
     </tr>`;
   }).join("");
 
@@ -584,9 +448,9 @@ function desenharTabelaHistorico(dados, f) {
     <div class="tabela-wrap">
       <table class="tabela">
         <thead><tr>
-          <th>Data</th><th>Participante</th><th>Especificação técnica / orientação</th><th>Função</th><th>Empresa</th>
+          <th>Data</th><th>Participante</th><th>E-mail</th><th>Especificação técnica / orientação</th><th>Função</th><th>Empresa</th>
           <th>Matrícula/CPF</th><th>Local</th><th>Gerência</th><th>Modalidade</th>
-          <th>Instrutor/Fiscal</th><th>Nota</th><th>Resultado</th><th>Origem</th><th>Ações</th>
+          <th>Instrutor/Fiscal</th><th>Nota</th><th>Resultado</th><th>Ações</th>
         </tr></thead>
         <tbody>${corpo}</tbody>
       </table>
@@ -678,9 +542,8 @@ async function carregarSeed(e, opcoes = {}) {
       });
       if (e2) throw e2;
     }
-    await Promise.all([carregarProvas(), carregarTentativas()]);
+    await carregarProvas();
     conferirSeed();
-    renderAtividades();
     renderListaProvas();
     alert(substituirArea ? "Provas da área substituídas com sucesso!" : "Provas carregadas com sucesso!");
   } catch (err) {

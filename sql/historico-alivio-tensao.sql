@@ -195,3 +195,47 @@ update public.historico_alivio_tensao set subarea = 'prospeccao_trilhos'
   where especificacao ilike '%PROSPEC%';
 update public.historico_alivio_tensao set subarea = 'alivio_termico'
   where especificacao ilike '%ALÍVIO DE TENSÕES%' or especificacao ilike '%ALIVIO DE TENSOES%';
+
+-- ---------------------------------------------------------------------
+-- 5) FONTE UNICA: e-mail no historico + gatilho que grava cada prova
+--    aplicada no sistema (tentativas) direto no historico.
+-- ---------------------------------------------------------------------
+alter table public.historico_alivio_tensao add column if not exists email text default '';
+alter table public.historico_alivio_tensao add column if not exists instrutor text default '';
+
+create or replace function public.historico_registrar_tentativa()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text;
+begin
+  select p.email into v_email
+  from public.profiles p
+  where p.id = new.aluno_id and p.area = new.area;
+
+  insert into public.historico_alivio_tensao
+    (especificacao, modalidade, categoria, data_inicio, data_fim, carga_horaria,
+     local, gerencia, participante, funcao, matricula, empresa, email, instrutor,
+     nota, aprovacao, subarea, origem)
+  values
+    (coalesce(new.prova_titulo, ''), 'TEÓRICO', 'HOMOLOGAÇÃO',
+     (new.realizado_em at time zone 'America/Sao_Paulo')::date,
+     (new.realizado_em at time zone 'America/Sao_Paulo')::date,
+     '', '', '',
+     coalesce(new.aluno_nome, ''), '', coalesce(new.aluno_matricula, ''),
+     coalesce(new.empresa, ''), coalesce(v_email, ''), coalesce(new.instrutor_nome, ''),
+     new.nota,
+     case when new.aprovado then 'APROVADO' else 'REPROVADO' end,
+     coalesce(nullif(new.subarea, ''), 'alivio_termico'),
+     'sistema');
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_historico_tentativa on public.tentativas;
+create trigger trg_historico_tentativa
+  after insert on public.tentativas
+  for each row execute function public.historico_registrar_tentativa();

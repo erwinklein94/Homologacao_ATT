@@ -175,7 +175,7 @@ function renderPainelAlivioTensao() {
     cab.innerHTML = `
       <div class="eyebrow">Área do administrador · Alívio de Tensão</div>
       <h1>Painel — ${escaparHtml(nomeTreinamento)}</h1>
-      <p class="muted">Visão consolidada das provas realizadas no sistema e do histórico importado deste treinamento, com filtros para análise por empresa, gerência, local, modalidade, categoria, resultado, origem e período.</p>`;
+      <p class="muted">Visão consolidada do histórico deste treinamento, com filtros para análise por empresa, gerência, local, modalidade, categoria, resultado e período.</p>`;
   }
 
   const dados = montarHistoricoAlivioCompleto();
@@ -204,12 +204,6 @@ function aprovacaoNormalizada(v) {
   if (s.includes("REPROV")) return "REPROVADO";
   return "NA";
 }
-function origemNormalizada(v) {
-  const s = chaveFiltro(v);
-  if (s === "SISTEMA") return "Sistema";
-  return "Planilha";
-}
-
 function normalizarHistoricoLegado(registros) {
   return (registros || [])
   .map((r) => ({
@@ -222,42 +216,21 @@ function normalizarHistoricoLegado(registros) {
     local: normalizarTexto(r.local),
     gerencia: normalizarTexto(r.gerencia),
     participante: normalizarTexto(r.participante),
+    email: normalizarTexto(r.email),
     funcao: normalizarTexto(r.funcao),
     matricula: normalizarTexto(r.matricula),
     empresa: normalizarTexto(r.empresa),
     nota: notaNumero(r.nota),
     aprovacao: aprovacaoNormalizada(r.aprovacao),
     instrutor: normalizarTexto(r.instrutor || "—"),
-    origem: origemNormalizada(r.origem),
   }))
   .filter((r) => r.nota !== null);
 }
 
-function tentativaParaHistorico(t) {
-  return {
-    especificacao: t.prova_titulo || "Prova aplicada no sistema",
-    modalidade: "Sistema",
-    categoria: "Avaliação",
-    data_inicio: t.realizado_em || null,
-    data_fim: t.realizado_em || null,
-    carga_horaria: "—",
-    local: "—",
-    gerencia: "—",
-    participante: t.aluno_nome || "—",
-    funcao: "—",
-    matricula: "—",
-    empresa: "—",
-    nota: notaNumero(t.nota),
-    aprovacao: t.aprovado ? "APROVADO" : "REPROVADO",
-    instrutor: t.instrutor_nome || "—",
-    origem: "Sistema",
-  };
-}
-
+// Fonte única: a tabela historico_alivio_tensao já contém tanto os registros
+// importados da planilha quanto as provas aplicadas no sistema (gatilho no banco).
 function montarHistoricoAlivioCompleto() {
-  const legado = normalizarHistoricoLegado(painel.historicoAlivio).map((r) => ({ ...r, origem: "Planilha" }));
-  const sistema = (painel.tentativas || []).map(tentativaParaHistorico);
-  const todos = legado.concat(sistema);
+  const todos = normalizarHistoricoLegado(painel.historicoAlivio);
   todos.sort((a, b) => String(b.data_inicio || "").localeCompare(String(a.data_inicio || "")));
   return todos;
 }
@@ -325,14 +298,6 @@ function renderFiltrosHistorico(dados) {
           </select>
         </div>
         <div class="field" style="margin:0">
-          <label for="p-origem">Origem</label>
-          <select id="p-origem" class="select" data-p-origem>
-            <option value="">Todas</option>
-            <option value="Planilha">Planilha histórica</option>
-            <option value="Sistema">Sistema</option>
-          </select>
-        </div>
-        <div class="field" style="margin:0">
           <label for="p-especificacao">Especificação / prova</label>
           <select id="p-especificacao" class="select" data-p-especificacao>${opcoesUnicas(dados, "especificacao", "Todas")}</select>
         </div>
@@ -368,7 +333,6 @@ function lerFiltrosHistorico() {
     modalidade: val("[data-p-modalidade]"),
     categoria: val("[data-p-categoria]"),
     resultado: val("[data-p-resultado]"),
-    origem: val("[data-p-origem]"),
     especificacao: val("[data-p-especificacao]"),
     dataInicio: val("[data-p-data-inicio]"),
     dataFim: val("[data-p-data-fim]"),
@@ -377,7 +341,7 @@ function lerFiltrosHistorico() {
 
 function filtrarHistorico(dados, f) {
   return dados.filter((r) => {
-    const textoBusca = [r.participante, r.matricula, r.funcao, r.local, r.gerencia, r.empresa, r.especificacao]
+    const textoBusca = [r.participante, r.email, r.matricula, r.funcao, r.local, r.gerencia, r.empresa, r.especificacao]
       .join(" ").toLowerCase();
     const data = String(r.data_inicio || "").slice(0, 10);
 
@@ -387,7 +351,6 @@ function filtrarHistorico(dados, f) {
     if (f.local && chaveFiltro(r.local) !== f.local) return false;
     if (f.modalidade && chaveFiltro(r.modalidade) !== f.modalidade) return false;
     if (f.categoria && chaveFiltro(r.categoria) !== f.categoria) return false;
-    if (f.origem && r.origem !== f.origem) return false;
     if (f.especificacao && chaveFiltro(r.especificacao) !== f.especificacao) return false;
     if (f.resultado === "COM_NOTA" && typeof r.nota !== "number") return false;
     if (["APROVADO", "REPROVADO"].includes(f.resultado) && r.aprovacao !== f.resultado) return false;
