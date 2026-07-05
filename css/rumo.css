@@ -51,6 +51,9 @@
 
 * { box-sizing: border-box; }
 
+/* Zoom out global (85%): cabe mais informação na tela em todas as páginas. */
+html { zoom: 0.85; }
+
 html, body { height: 100%; }
 
 body {
