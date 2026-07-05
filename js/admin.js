@@ -59,15 +59,15 @@ async function carregarTentativas() {
 
 // Histórico importado da planilha, mantido no Supabase e editável pelo
 // administrador (tabela public.historico_alivio_tensao).
-// Existe apenas na área de Alívio de Tensão.
+// Cada registro pertence a um dos 4 treinamentos (coluna subarea); a aba
+// Histórico mostra o treinamento selecionado no menu do topo.
 async function carregarHistoricoAlivio() {
-  // O histórico da planilha é de ATT (Alívio de Tensão Térmica); os demais
-  // treinamentos começam sem legado e mostram só as provas do sistema.
-  if (adm.perfil?.area !== "alivio_tensao" || adm.subarea !== "alivio_termico") { adm.historico = []; return; }
+  if (adm.perfil?.area !== "alivio_tensao" || !adm.subarea) { adm.historico = []; return; }
 
   const { data, error } = await sb
     .from("historico_alivio_tensao")
     .select("*")
+    .eq("subarea", adm.subarea)
     .order("data_inicio", { ascending: false });
   if (error) {
     console.error("Erro ao carregar o histórico (rode sql/historico-alivio-tensao.sql):", error.message);
@@ -293,6 +293,13 @@ function renderHistorico() {
                 <option value="CAPACITAÇÃO">Capacitação</option>
               </select>
             </div>
+            <div class="field" style="min-width:210px">
+              <label for="hf-subarea">Treinamento</label>
+              <select id="hf-subarea" class="select" name="subarea">
+                ${Object.values(window.SUBAREAS_ALIVIO).map((s) =>
+                  `<option value="${s.id}">${escaparHtml(s.nome)}</option>`).join("")}
+              </select>
+            </div>
           </div>
           <div class="row">
             <div class="field" style="min-width:160px">
@@ -428,8 +435,10 @@ function abrirFormHistorico(id) {
     form.gerencia.value = r.gerencia || "";
     form.nota.value = (r.nota === null || r.nota === undefined) ? "" : r.nota;
     form.aprovacao.value = r.aprovacao === "REPROVADO" ? "REPROVADO" : "APROVADO";
+    form.subarea.value = subareaValida(r.subarea) ? r.subarea : adm.subarea;
   } else {
     titulo.textContent = "Novo registro do histórico";
+    form.subarea.value = adm.subarea;
   }
 
   card.classList.remove("hidden");
@@ -471,6 +480,7 @@ async function salvarRegistroHistorico(e) {
     gerencia: form.gerencia.value.trim(),
     nota,
     aprovacao: form.aprovacao.value,
+    subarea: subareaValida(form.subarea.value) ? form.subarea.value : adm.subarea,
   };
 
   btn.disabled = true;

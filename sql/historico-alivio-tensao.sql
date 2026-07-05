@@ -29,13 +29,26 @@ create table if not exists public.historico_alivio_tensao (
   empresa        text default '',
   nota           numeric,
   aprovacao      text not null default 'NA',        -- APROVADO / REPROVADO / NA
+  -- Treinamento do registro (mesmos ids de SUBAREAS_ALIVIO em js/app.js):
+  -- alivio_termico / prospeccao_trilhos / operacao_verse / temperaturas_neutras
+  subarea        text not null default 'alivio_termico',
   origem         text not null default 'planilha',
   criado_em      timestamptz not null default now(),
   atualizado_em  timestamptz not null default now()
 );
 
+-- Instalacoes antigas (tabela criada sem a coluna subarea).
+alter table public.historico_alivio_tensao
+  add column if not exists subarea text not null default 'alivio_termico';
+alter table public.historico_alivio_tensao
+  drop constraint if exists historico_alivio_subarea_chk;
+alter table public.historico_alivio_tensao
+  add constraint historico_alivio_subarea_chk
+  check (subarea in ('alivio_termico', 'prospeccao_trilhos', 'operacao_verse', 'temperaturas_neutras'));
+
 create index if not exists idx_hist_alivio_data on public.historico_alivio_tensao (data_inicio desc);
 create index if not exists idx_hist_alivio_part on public.historico_alivio_tensao (participante);
+create index if not exists idx_hist_alivio_subarea on public.historico_alivio_tensao (subarea, data_inicio desc);
 
 -- ---------------------------------------------------------------------
 -- 2) ROW LEVEL SECURITY (somente admin da area de Alivio de Tensao)
@@ -168,3 +181,17 @@ insert into public.historico_alivio_tensao (especificacao, modalidade, categoria
     ('MAN-VP-L-PRO-TR-0036-01 – ALÍVIO DE TENSÕES TÉRMICAS EM TRILHO', 'TEÓRICO', 'HOMOLOGAÇÃO', '2026-06-16', '2026-06-16', '8h', 'CHAPADÃO DO SUL/MS', 'SP NORTE', 'Clécio Teurencio', 'Supervisor', '4563658693', 'TRILL', 9.7, 'APROVADO'),
     ('MAN-VP-L-PRO-TR-0036-01 – ALÍVIO DE TENSÕES TÉRMICAS EM TRILHO', 'TEÓRICO', 'HOMOLOGAÇÃO', '2026-06-16', '2026-06-16', '8h', 'CHAPADÃO DO SUL/MS', 'SP NORTE', 'Frey Lima dos Santos', 'Encarregado', '349729720', 'TRILL', 8.2, 'APROVADO'),
     ('MAN-VP-L-PRO-TR-0036-01 – ALÍVIO DE TENSÕES TÉRMICAS EM TRILHO', 'TEÓRICO', 'HOMOLOGAÇÃO', '2026-06-16', '2026-06-16', '8h', 'CHAPADÃO DO SUL/MS', 'SP NORTE', 'Carlos Roberto Gomes', 'Supervisor', '298468000000', 'TRILL', 9, 'APROVADO');
+
+-- ---------------------------------------------------------------------
+-- 4) TREINAMENTO DE CADA REGISTRO (classificacao pela especificacao)
+--    ALIVIO DE TENSOES -> alivio_termico | TEMPERATURAS NEUTRAS ->
+--    temperaturas_neutras | VERSE -> operacao_verse | PROSPEC -> prospeccao_trilhos
+-- ---------------------------------------------------------------------
+update public.historico_alivio_tensao set subarea = 'temperaturas_neutras'
+  where especificacao ilike '%TEMPERATURAS NEUTRAS%';
+update public.historico_alivio_tensao set subarea = 'operacao_verse'
+  where especificacao ilike '%VERSE%';
+update public.historico_alivio_tensao set subarea = 'prospeccao_trilhos'
+  where especificacao ilike '%PROSPEC%';
+update public.historico_alivio_tensao set subarea = 'alivio_termico'
+  where especificacao ilike '%ALÍVIO DE TENSÕES%' or especificacao ilike '%ALIVIO DE TENSOES%';

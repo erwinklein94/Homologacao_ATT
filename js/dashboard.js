@@ -65,11 +65,13 @@ async function carregarAlunos(area) {
 }
 
 async function carregarHistoricoAlivio(area, subarea) {
-  // O histórico da planilha pertence ao treinamento Alívio de tensão térmica (ATT).
-  if (area !== "alivio_tensao" || subarea !== "alivio_termico") return [];
+  // Cada registro do histórico pertence a um treinamento (coluna subarea);
+  // o painel mostra o treinamento selecionado no menu do topo.
+  if (area !== "alivio_tensao" || !subarea) return [];
   const { data, error } = await sb
     .from("historico_alivio_tensao")
     .select("*")
+    .eq("subarea", subarea)
     .not("nota", "is", null)
     .order("data_inicio", { ascending: false });
 
