@@ -63,6 +63,14 @@ window.getSubareaEscolhida = getSubareaEscolhida;
 window.setSubareaEscolhida = setSubareaEscolhida;
 window.getSubareaMeta = getSubareaMeta;
 
+// Especificações técnicas / orientações disponíveis no cadastro do aluno.
+window.ESPECIFICACOES_ATT = [
+  "ENG-ETS-ON-T003/06.00 - ALÍVIO DE TENSÕES TÉRMICAS",
+  "ENG-ETS-ON-T003/06.00 - ALÍVIO DE TENSÕES TÉRMICAS EM TRILHOS",
+  "ENG-ETS-ON-T009/04.00-TEMPERATURAS NEUTRAS DE REFERÊNCIA PARA SERVIÇOS DE TRILHO",
+  "MAN-VP-L-PRO-TR-0036-01 – ALÍVIO DE TENSÕES TÉRMICAS EM TRILHO",
+];
+
 // Classifica um registro (prova/tentativa) de alivio_tensao pelo treinamento.
 // Registros antigos sem coluna preenchida contam como Alívio de tensão térmica.
 function subareaDoRegistro(r) {

@@ -142,6 +142,15 @@ function ligarFormAluno(area) {
 
 function ligarFormSolicitar(area) {
   const f = document.querySelector("[data-form-solicitar]");
+
+  // Opções de especificação técnica (fonte única em js/app.js).
+  const selEspec = f.querySelector("[data-select-especificacao]");
+  if (selEspec) {
+    selEspec.innerHTML = (window.ESPECIFICACOES_ATT || [])
+      .map((e) => `<option value="${e.replace(/"/g, "&quot;")}">${e}</option>`)
+      .join("");
+  }
+
   f.addEventListener("submit", async (e) => {
     e.preventDefault();
     msg("[data-msg-solicitar]", null);
@@ -159,11 +168,25 @@ function ligarFormSolicitar(area) {
     travar(btn, true, "Enviando solicitação…");
 
     // O signUp cria a conta no Auth; o gatilho handle_new_user (banco)
-    // registra a solicitação como PENDENTE em alunos_cadastrados.
+    // registra a solicitação como PENDENTE em alunos_cadastrados com todos
+    // os campos abaixo — eles alimentam o Histórico quando a prova é feita.
     const { data, error } = await sb.auth.signUp({
       email,
       password: f.senha.value,
-      options: { data: { nome, matricula, area } },
+      options: {
+        data: {
+          nome,
+          matricula,
+          area,
+          empresa: f.empresa.value.trim(),
+          funcao: f.funcao.value.trim(),
+          local: f.local.value.trim(),
+          gerencia: f.gerencia.value.trim(),
+          modalidade: f.modalidade.value,
+          instrutor: f.instrutor.value.trim(),
+          especificacao: f.especificacao.value,
+        },
+      },
     });
 
     if (error) {

@@ -100,13 +100,50 @@
                       <input id="so-nome" class="input" type="text" name="nome" autocomplete="name" required placeholder="Seu nome" />
                     </div>
                     <div class="field">
-                      <label for="so-matricula">Matrícula <span class="muted">(opcional)</span></label>
+                      <label for="so-matricula">Matrícula / CPF</label>
                       <input id="so-matricula" class="input" type="text" name="matricula" autocomplete="off" placeholder="Ex.: TR061052" />
                     </div>
                   </div>
                   <div class="field">
                     <label for="so-email">E-mail</label>
                     <input id="so-email" class="input" type="email" name="email" autocomplete="username" required placeholder="seu@email.com" />
+                  </div>
+                  <div class="field">
+                    <label for="so-especificacao">Especificação técnica / orientação</label>
+                    <select id="so-especificacao" class="select" name="especificacao" data-select-especificacao></select>
+                  </div>
+                  <div class="row row--senha">
+                    <div class="field">
+                      <label for="so-funcao">Função</label>
+                      <input id="so-funcao" class="input" type="text" name="funcao" placeholder="Ex.: Encarregado" />
+                    </div>
+                    <div class="field">
+                      <label for="so-empresa">Empresa</label>
+                      <input id="so-empresa" class="input" type="text" name="empresa" placeholder="Ex.: Rumo, COTRIN" />
+                    </div>
+                  </div>
+                  <div class="row row--senha">
+                    <div class="field">
+                      <label for="so-local">Local</label>
+                      <input id="so-local" class="input" type="text" name="local" placeholder="Ex.: ARARAQUARA/SP" />
+                    </div>
+                    <div class="field">
+                      <label for="so-gerencia">Gerência</label>
+                      <input id="so-gerencia" class="input" type="text" name="gerencia" placeholder="Ex.: SP NORTE" />
+                    </div>
+                  </div>
+                  <div class="row row--senha">
+                    <div class="field">
+                      <label for="so-modalidade">Modalidade</label>
+                      <select id="so-modalidade" class="select" name="modalidade">
+                        <option value="TEÓRICO">Teórico</option>
+                        <option value="PRÁTICO">Prático</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label for="so-instrutor">Instrutor</label>
+                      <input id="so-instrutor" class="input" type="text" name="instrutor" placeholder="Nome do instrutor" />
+                    </div>
                   </div>
                   <div class="row row--senha">
                     <div class="field">
@@ -138,8 +175,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>if(!window.supabase){document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');}</script>
-  <script src="js/config.js?v=20260704-login-v3"></script>
-  <script src="js/app.js?v=20260704-login-v3"></script>
-  <script src="js/login.js?v=20260704-login-v3"></script>
+  <script src="js/config.js?v=20260705-cadastro-completo-v1"></script>
+  <script src="js/app.js?v=20260705-cadastro-completo-v1"></script>
+  <script src="js/login.js?v=20260705-cadastro-completo-v1"></script>
 </body>
 </html>

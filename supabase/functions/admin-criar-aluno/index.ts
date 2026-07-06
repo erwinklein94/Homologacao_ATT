@@ -73,6 +73,12 @@ serve(async (req) => {
     const email = limparTexto(body.email);
     const emailNormalizado = normalizarEmail(email);
     const empresa = limparTexto(body.empresa) || null;
+    const funcao = limparTexto(body.funcao);
+    const local = limparTexto(body.local);
+    const gerencia = limparTexto(body.gerencia);
+    const modalidade = limparTexto(body.modalidade);
+    const instrutor = limparTexto(body.instrutor);
+    const especificacao = limparTexto(body.especificacao);
     const senha = typeof body.senha === "string" ? body.senha : "";
     const ativo = body.ativo !== false;
 
@@ -111,6 +117,12 @@ serve(async (req) => {
         email,
         email_normalizado: emailNormalizado,
         empresa,
+        funcao,
+        local,
+        gerencia,
+        modalidade,
+        instrutor,
+        especificacao,
         ativo,
         criado_por: adminLogado.id,
         atualizado_em: new Date().toISOString(),
@@ -143,7 +155,7 @@ serve(async (req) => {
         email: emailNormalizado,
         password: senha,
         email_confirm: true,
-        user_metadata: { nome, matricula, empresa, area },
+        user_metadata: { nome, matricula, empresa, funcao, local, gerencia, modalidade, instrutor, especificacao, area },
       });
 
       if (erroCriar || !novo?.user) {
@@ -160,6 +172,12 @@ serve(async (req) => {
           nome,
           matricula,
           empresa,
+          funcao,
+          local,
+          gerencia,
+          modalidade,
+          instrutor,
+          especificacao,
           area,
         },
       };

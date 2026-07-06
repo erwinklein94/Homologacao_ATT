@@ -35,7 +35,7 @@ async function carregarDados() {
       .eq("area", cad.perfil.area)
       .order("nome", { ascending: true }),
     sb.from("alunos_cadastrados")
-      .select("id, area, nome, matricula, email, email_normalizado, empresa, ativo, criado_por, criado_em")
+      .select("id, area, nome, matricula, email, email_normalizado, empresa, funcao, local, gerencia, modalidade, instrutor, especificacao, ativo, criado_por, criado_em")
       .eq("area", cad.perfil.area)
       .order("criado_em", { ascending: false }),
   ]);
@@ -129,6 +129,40 @@ function render() {
               <option value="true">Ativo</option>
               <option value="false">Inativo</option>
             </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field" style="flex:2;min-width:280px">
+            <label for="ct-especificacao">Especificação técnica / orientação</label>
+            <select id="ct-especificacao" class="select" name="especificacao">
+              ${(window.ESPECIFICACOES_ATT || []).map((e) =>
+                `<option value="${escaparHtml(e)}">${escaparHtml(e)}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field" style="flex:1;min-width:180px">
+            <label for="ct-funcao">Função</label>
+            <input id="ct-funcao" class="input" name="funcao" placeholder="Ex.: Encarregado" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field" style="flex:1;min-width:180px">
+            <label for="ct-local">Local</label>
+            <input id="ct-local" class="input" name="local" placeholder="Ex.: ARARAQUARA/SP" />
+          </div>
+          <div class="field" style="flex:1;min-width:160px">
+            <label for="ct-gerencia">Gerência</label>
+            <input id="ct-gerencia" class="input" name="gerencia" placeholder="Ex.: SP NORTE" />
+          </div>
+          <div class="field" style="min-width:140px">
+            <label for="ct-modalidade">Modalidade</label>
+            <select id="ct-modalidade" class="select" name="modalidade">
+              <option value="TEÓRICO">Teórico</option>
+              <option value="PRÁTICO">Prático</option>
+            </select>
+          </div>
+          <div class="field" style="flex:1;min-width:180px">
+            <label for="ct-instrutor">Instrutor</label>
+            <input id="ct-instrutor" class="input" name="instrutor" placeholder="Nome do instrutor" />
           </div>
         </div>
         <div class="row">
@@ -431,6 +465,12 @@ async function salvarConta(e) {
     matricula,
     email,
     empresa,
+    funcao: form.funcao.value.trim(),
+    local: form.local.value.trim(),
+    gerencia: form.gerencia.value.trim(),
+    modalidade: form.modalidade.value,
+    instrutor: form.instrutor.value.trim(),
+    especificacao: form.especificacao.value,
     senha: senha || null,
     ativo,
   });
@@ -492,6 +532,14 @@ function preencherFormulario(chaveEmail) {
   form.email.value = dono.email || "";
   form.email.readOnly = true;
   form.empresa.value = dono.empresa || cadastro?.empresa || "";
+  form.funcao.value = cadastro?.funcao || "";
+  form.local.value = cadastro?.local || "";
+  form.gerencia.value = cadastro?.gerencia || "";
+  form.modalidade.value = cadastro?.modalidade === "PRÁTICO" ? "PRÁTICO" : "TEÓRICO";
+  form.instrutor.value = cadastro?.instrutor || "";
+  if (cadastro?.especificacao && (window.ESPECIFICACOES_ATT || []).includes(cadastro.especificacao)) {
+    form.especificacao.value = cadastro.especificacao;
+  }
   form.ativo.value = (cadastro ? cadastro.ativo : true) ? "true" : "false";
   form.senha.value = "";
   form.senha2.value = "";
