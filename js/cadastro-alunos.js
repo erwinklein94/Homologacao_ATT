@@ -4,11 +4,14 @@
 // - Cria contas de aluno do zero (com senha inicial) via Edge Function
 //   admin-criar-aluno e edita os dados de qualquer conta existente.
 // - Promove aluno a administrador e rebaixa administrador a aluno.
+// - Administradores e alunos ficam em TABELAS separadas.
+// - Exclui contas de vez (Edge Function admin-excluir-conta: apaga o
+//   usuário do Auth, o perfil e o cadastro).
 //
 // Modelo de dados: profiles = contas reais (admin/aluno);
 // alunos_cadastrados = autorização de prova (ativo) e fila de solicitações
-// (ativo=false sem criado_por = pendente). Recusar/desativar NUNCA apaga o
-// registro: sem ele, corrigir_prova deixaria de bloquear a prova.
+// (ativo=false sem criado_por = pendente). Desativar/recusar NUNCA apaga o
+// registro (senão corrigir_prova deixaria de bloquear); só "Excluir" apaga.
 // =====================================================================
 
 const cad = {
@@ -185,9 +188,20 @@ function render() {
       </form>
     </div>
 
+    <div class="card stack" style="margin-bottom:1.2rem">
+      <div class="toolbar">
+        <h2 style="margin:0">Administradores</h2>
+        <span class="badge badge--ok badge--dot">${admins} conta(s)</span>
+      </div>
+      <p class="muted small" style="margin:0">
+        Contas com acesso administrativo. Você pode editar, voltar para o perfil de aluno ou excluir a conta.
+      </p>
+      <div data-tabela-admins></div>
+    </div>
+
     <div class="card stack">
       <div class="toolbar">
-        <h2 style="margin:0">Contas e cadastros</h2>
+        <h2 style="margin:0">Alunos</h2>
         <span class="spacer"></span>
         <div class="field" style="margin:0;min-width:260px">
           <label for="ct-busca">Buscar</label>
@@ -197,17 +211,16 @@ function render() {
           <label for="ct-filtro">Mostrar</label>
           <select id="ct-filtro" class="select" data-filtro>
             <option value="">Todos</option>
-            <option value="admin">Administradores</option>
-            <option value="aluno">Alunos</option>
+            <option value="ativo">Ativos</option>
             <option value="pendente">Pendentes</option>
             <option value="inativo">Inativos</option>
           </select>
         </div>
       </div>
       <p class="muted small" style="margin:0">
-        Aqui você edita qualquer conta, muda o papel (aluno ⇄ administrador) e ativa/desativa o acesso às provas.
+        Edita a conta, promove para administrador, ativa/desativa o acesso às provas ou exclui de vez.
       </p>
-      <div data-tabela-contas></div>
+      <div data-tabela-alunos></div>
     </div>`;
 
   desenharSolicitacoes(pendentes);
@@ -223,11 +236,12 @@ function render() {
   const aplicar = () => {
     cad.busca = busca.value.trim().toLowerCase();
     cad.filtro = filtro.value;
-    desenharContas();
+    desenharAlunos();
   };
   busca.addEventListener("input", aplicar);
   filtro.addEventListener("change", aplicar);
-  desenharContas();
+  desenharAdmins();
+  desenharAlunos();
 }
 
 // --------------------------------------------------------- solicitações
@@ -294,15 +308,60 @@ async function recusarSolicitacao(id) {
   await recarregar();
 }
 
-// -------------------------------------------------------------- contas
-function desenharContas() {
-  const host = document.querySelector("[data-tabela-contas]");
+// ----------------------------------------------------- tabela de admins
+function desenharAdmins() {
+  const host = document.querySelector("[data-tabela-admins]");
   if (!host) return;
 
-  // Linhas = todas as contas + cadastros que ainda não viraram conta
+  const admins = cad.contas.filter((c) => c.role === "admin");
+  if (admins.length === 0) {
+    host.innerHTML = `<p class="muted center" style="padding:1.2rem 0">Nenhum administrador cadastrado.</p>`;
+    return;
+  }
+
+  const corpo = admins.map((conta) => {
+    const chave = conta.email_normalizado || String(conta.email || "").trim().toLowerCase();
+    const acoes = [`<button class="btn btn--ghost btn--sm" data-editar="${escaparHtml(chave)}">Editar</button>`];
+    if (conta.id === cad.perfil.id) {
+      acoes.push('<span class="muted small">Conta atual</span>');
+    } else {
+      acoes.push(`<button class="btn btn--ghost btn--sm" data-rebaixar="${conta.id}">Tornar aluno</button>`);
+      acoes.push(`<button class="btn btn--danger btn--sm" data-excluir="${escaparHtml(chave)}">Excluir</button>`);
+    }
+    return `<tr>
+      <td><b>${escaparHtml(conta.nome || "—")}</b></td>
+      <td class="nowrap">${escaparHtml(conta.matricula || "—")}</td>
+      <td>${escaparHtml(conta.email || "—")}</td>
+      <td>${escaparHtml(conta.empresa || "—")}</td>
+      <td class="nowrap">${acoes.join(" ")}</td>
+    </tr>`;
+  }).join("");
+
+  host.innerHTML = `
+    <div class="tabela-wrap">
+      <table class="tabela">
+        <thead><tr>
+          <th>Nome</th><th>Matrícula</th><th>E-mail</th><th>Empresa</th><th>Ações</th>
+        </tr></thead>
+        <tbody>${corpo}</tbody>
+      </table>
+    </div>`;
+
+  ligarAcoesContas(host);
+}
+
+// ----------------------------------------------------- tabela de alunos
+function desenharAlunos() {
+  const host = document.querySelector("[data-tabela-alunos]");
+  if (!host) return;
+
+  // Linhas = contas de aluno + cadastros que ainda não viraram conta
   // (ex.: aluno cadastrado como inativo antes de criar acesso no Auth).
+  // Administradores ficam de fora — têm a própria tabela.
   const linhas = [];
-  cad.contas.forEach((conta) => linhas.push({ conta, cadastro: cadastroDaConta(conta) }));
+  cad.contas.forEach((conta) => {
+    if (conta.role === "aluno") linhas.push({ conta, cadastro: cadastroDaConta(conta) });
+  });
   cad.cadastros.forEach((c) => {
     if (!contaDoCadastro(c)) linhas.push({ conta: null, cadastro: c });
   });
@@ -311,15 +370,14 @@ function desenharContas() {
     const dono = l.conta || l.cadastro;
     const alvo = `${dono.nome || ""} ${dono.matricula || ""} ${dono.email || ""} ${dono.empresa || ""}`.toLowerCase();
     if (cad.busca && !alvo.includes(cad.busca)) return false;
-    if (cad.filtro === "admin") return l.conta?.role === "admin";
-    if (cad.filtro === "aluno") return l.conta?.role === "aluno";
+    if (cad.filtro === "ativo") return l.cadastro ? l.cadastro.ativo : true;
     if (cad.filtro === "pendente") return l.cadastro && ehPendente(l.cadastro);
     if (cad.filtro === "inativo") return l.cadastro && !l.cadastro.ativo && !ehPendente(l.cadastro);
     return true;
   });
 
   if (filtradas.length === 0) {
-    host.innerHTML = `<p class="muted center" style="padding:1.4rem 0">Nenhuma conta encontrada.</p>`;
+    host.innerHTML = `<p class="muted center" style="padding:1.4rem 0">Nenhum aluno encontrado.</p>`;
     return;
   }
 
@@ -327,66 +385,59 @@ function desenharContas() {
     const dono = l.conta || l.cadastro;
     const chave = dono.email_normalizado || String(dono.email || "").trim().toLowerCase();
 
-    const papel = !l.conta
-      ? '<span class="muted small">Sem conta</span>'
-      : l.conta.role === "admin"
-        ? '<span class="badge-role badge-role--admin">Administrador</span>'
-        : '<span class="badge-role">Aluno</span>';
-
-    // Admin não depende de alunos_cadastrados para nada; mostra "—".
-    const status = l.conta?.role === "admin"
-      ? '<span class="muted">—</span>'
-      : !l.cadastro
+    const status = !l.cadastro
+      ? '<span class="badge badge--ok badge--dot">Ativo</span>'
+      : l.cadastro.ativo
         ? '<span class="badge badge--ok badge--dot">Ativo</span>'
-        : l.cadastro.ativo
-          ? '<span class="badge badge--ok badge--dot">Ativo</span>'
-          : ehPendente(l.cadastro)
-            ? '<span class="badge badge--aviso badge--dot">Pendente</span>'
-            : '<span class="badge badge--erro badge--dot">Inativo</span>';
+        : ehPendente(l.cadastro)
+          ? '<span class="badge badge--aviso badge--dot">Pendente</span>'
+          : '<span class="badge badge--erro badge--dot">Inativo</span>';
 
-    const acoes = [];
-    acoes.push(`<button class="btn btn--ghost btn--sm" data-editar="${escaparHtml(chave)}">Editar</button>`);
+    const acoes = [`<button class="btn btn--ghost btn--sm" data-editar="${escaparHtml(chave)}">Editar</button>`];
 
     if (l.cadastro && ehPendente(l.cadastro)) {
       acoes.push(`<button class="btn btn--success btn--sm" data-aprovar-linha="${l.cadastro.id}">Aprovar</button>`);
       acoes.push(`<button class="btn btn--ghost btn--sm" data-recusar-linha="${l.cadastro.id}">Recusar</button>`);
     } else if (l.conta) {
-      if (l.conta.id === cad.perfil.id) {
-        acoes.push('<span class="muted small">Conta atual</span>');
-      } else if (l.conta.role === "aluno") {
-        acoes.push(`<button class="btn btn--primary btn--sm" data-promover="${l.conta.id}">Tornar admin</button>`);
-      } else {
-        acoes.push(`<button class="btn btn--ghost btn--sm" data-rebaixar="${l.conta.id}">Tornar aluno</button>`);
-      }
-      if (l.conta.role === "aluno" && l.cadastro) {
+      acoes.push(`<button class="btn btn--primary btn--sm" data-promover="${l.conta.id}">Tornar admin</button>`);
+      if (l.cadastro) {
         acoes.push(l.cadastro.ativo
-          ? `<button class="btn btn--danger btn--sm" data-desativar="${l.cadastro.id}">Desativar</button>`
+          ? `<button class="btn btn--ghost btn--sm" data-desativar="${l.cadastro.id}">Desativar</button>`
           : `<button class="btn btn--success btn--sm" data-reativar="${l.cadastro.id}">Reativar</button>`);
       }
+    } else if (l.cadastro) {
+      acoes.push(l.cadastro.ativo
+        ? `<button class="btn btn--ghost btn--sm" data-desativar="${l.cadastro.id}">Desativar</button>`
+        : `<button class="btn btn--success btn--sm" data-reativar="${l.cadastro.id}">Reativar</button>`);
     }
+    acoes.push(`<button class="btn btn--danger btn--sm" data-excluir="${escaparHtml(chave)}">Excluir</button>`);
 
     return `<tr>
       <td><b>${escaparHtml(dono.nome || "—")}</b></td>
       <td class="nowrap">${escaparHtml(dono.matricula || "—")}</td>
       <td>${escaparHtml(dono.email || "—")}</td>
       <td>${escaparHtml(dono.empresa || "—")}</td>
-      <td>${papel}</td>
       <td>${status}</td>
       <td class="nowrap">${acoes.join(" ")}</td>
     </tr>`;
   }).join("");
 
   host.innerHTML = `
-    <p class="muted small" style="margin:.2rem 0 .6rem">${filtradas.length} conta(s)/cadastro(s)</p>
+    <p class="muted small" style="margin:.2rem 0 .6rem">${filtradas.length} aluno(s)/cadastro(s)</p>
     <div class="tabela-wrap">
       <table class="tabela">
         <thead><tr>
-          <th>Nome</th><th>Matrícula</th><th>E-mail</th><th>Empresa</th><th>Perfil</th><th>Status</th><th>Ações</th>
+          <th>Nome</th><th>Matrícula</th><th>E-mail</th><th>Empresa</th><th>Status</th><th>Ações</th>
         </tr></thead>
         <tbody>${corpo}</tbody>
       </table>
     </div>`;
 
+  ligarAcoesContas(host);
+}
+
+// Liga os botões de ação (compartilhados pelas duas tabelas).
+function ligarAcoesContas(host) {
   host.querySelectorAll("[data-editar]").forEach((b) =>
     b.addEventListener("click", () => preencherFormulario(b.dataset.editar)));
   host.querySelectorAll("[data-promover]").forEach((b) =>
@@ -401,6 +452,62 @@ function desenharContas() {
     b.addEventListener("click", () => mudarStatusCadastro(b.dataset.desativar, false)));
   host.querySelectorAll("[data-reativar]").forEach((b) =>
     b.addEventListener("click", () => mudarStatusCadastro(b.dataset.reativar, true)));
+  host.querySelectorAll("[data-excluir]").forEach((b) =>
+    b.addEventListener("click", () => excluirConta(b.dataset.excluir)));
+}
+
+// Exclui DEFINITIVAMENTE a conta/cadastro (auth + profile + cadastro).
+async function excluirConta(chaveEmail) {
+  const conta = cad.contas.find(
+    (p) => (p.email_normalizado || String(p.email || "").trim().toLowerCase()) === chaveEmail
+  );
+  const cadastro = cad.cadastros.find((c) => c.email_normalizado === chaveEmail);
+  const dono = conta || cadastro;
+  if (!dono) return;
+
+  if (conta && conta.id === cad.perfil.id) {
+    alert("Você não pode excluir a própria conta.");
+    return;
+  }
+
+  const nome = dono.nome || dono.email || "esta conta";
+  const ok = confirm(
+    `Excluir DEFINITIVAMENTE ${nome}?\n\n` +
+    `Isso remove o acesso, o cadastro e o histórico de provas feitas no sistema por esta conta. ` +
+    `Esta ação NÃO pode ser desfeita.`
+  );
+  if (!ok) return;
+
+  // Sem conta no Auth (só cadastro inativo): apaga direto pela RLS do admin.
+  if (!conta) {
+    const { error } = await sb.from("alunos_cadastrados").delete().eq("id", cadastro.id);
+    if (error) { alert("Erro ao excluir o cadastro: " + error.message); return; }
+    await recarregar();
+    return;
+  }
+
+  // Conta com acesso: precisa da Edge Function (remove usuário do Auth).
+  try {
+    const { data, error } = await sb.functions.invoke("admin-excluir-conta", {
+      body: { area: cad.perfil.area, email: dono.email || chaveEmail },
+    });
+    if (error) {
+      let detalhe = error.message || "Erro ao excluir a conta.";
+      if (error.context && typeof error.context.json === "function") {
+        try { const corpo = await error.context.json(); detalhe = corpo?.error || detalhe; } catch (_) { /* ignora */ }
+      }
+      alert("Não consegui excluir a conta: " + detalhe);
+      return;
+    }
+    if (!data || data.ok !== true) {
+      alert("Não consegui excluir a conta: " + (data?.error || "resposta inesperada da função."));
+      return;
+    }
+  } catch (err) {
+    alert("Não consegui acessar o Supabase. Confira se a Edge Function admin-excluir-conta está publicada. Detalhe: " + (err?.message || String(err)));
+    return;
+  }
+  await recarregar();
 }
 
 async function mudarPapel(contaId, novoRole) {
