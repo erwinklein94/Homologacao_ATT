@@ -162,7 +162,9 @@ a  { color: var(--rumo-azul-claro); }
 }
 .stack > * + * { margin-top: 1.1rem; }
 .row { display: flex; gap: 1rem; flex-wrap: wrap; }
-.row > * { flex: 1 1 240px; }
+/* min-width: 0 deixa o campo encolher em vez de estourar a borda do card
+   (selects com opções longas têm largura mínima intrínseca enorme). */
+.row > * { flex: 1 1 240px; min-width: 0; }
 
 /* =====================================================================
    Cards
@@ -302,7 +304,7 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
   padding: .45rem; border: 0; background: transparent; color: var(--rumo-texto); border-radius: 8px;
 }
 .tabs button.is-active { background: #fff; color: var(--rumo-azul); box-shadow: var(--rumo-sombra); }
-.login-foot { text-align: center; color: rgba(255,255,255,.6); padding: 1.1rem; font-size: .8rem; }
+.login-foot { text-align: center; color: rgba(255,255,255,.6); padding: 1.1rem; font-size: .8rem; position: relative; z-index: 1; }
 
 /* =====================================================================
    PROVA (execução)
@@ -432,10 +434,20 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  position: relative;
+  background-color: var(--rumo-azul-noite);
+}
+
+/* Foto de fundo presa à janela (e não à altura do conteúdo): quando o
+   formulário cresce e a página rola, a imagem segue inteira, sem cortes. */
+.login-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   background:
     linear-gradient(135deg, rgba(0, 30, 54, .86), rgba(0, 56, 101, .72)),
     url('../assets/login-bg-hexa.jpg') center center / cover no-repeat;
-  background-color: var(--rumo-azul-noite);
 }
 
 .login-hero {
@@ -447,6 +459,7 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
     radial-gradient(circle at 10% 12%, rgba(127, 224, 108, .28), transparent 26%),
     radial-gradient(circle at 90% 8%, rgba(50, 166, 230, .22), transparent 30%);
   position: relative;
+  z-index: 1;
   overflow: hidden;
 }
 
@@ -462,7 +475,7 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
 }
 
 .login-box {
-  width: min(100%, 980px);
+  width: min(100%, 1120px);
   position: relative;
   z-index: 1;
   display: grid;
@@ -608,7 +621,8 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
 
 .login-cards {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  /* O card do aluno é maior: abriga o formulário de solicitação completo. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
   gap: .8rem;
   align-items: start;
 }
@@ -703,6 +717,28 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
 .login-card .input:focus {
   border-color: var(--rumo-verde);
   box-shadow: 0 0 0 4px rgba(127,224,108,.20);
+}
+
+.login-card .select {
+  min-height: 40px;
+  border-radius: 11px;
+  border-color: var(--rumo-cinza-300);
+  background: #fff;
+  width: 100%;
+  max-width: 100%;
+  font-size: .85rem;
+  padding: .5rem .6rem;
+}
+
+.login-card .select:focus {
+  border-color: var(--rumo-verde);
+  box-shadow: 0 0 0 4px rgba(127,224,108,.20);
+}
+
+/* O texto do hint e dos alertas quebra dentro do card, nunca por cima da borda. */
+.login-card .field__hint,
+.login-card .alerta {
+  overflow-wrap: anywhere;
 }
 
 .senha-wrap {
