@@ -247,7 +247,8 @@ function renderHistorico() {
             <option value="reprov">Reprovados</option>
           </select>
         </div>
-        <div class="field" style="margin:0;align-self:flex-end">
+        <div class="field" style="margin:0;align-self:flex-end;display:flex;gap:.5rem">
+          <button class="btn btn--ghost" type="button" data-hist-exportar>⬇ Exportar Excel</button>
           <button class="btn btn--primary" type="button" data-hist-novo>Adicionar registro</button>
         </div>
       </div>
@@ -266,9 +267,57 @@ function renderHistorico() {
   host.querySelector("[data-h-result]").addEventListener("change", aplicar);
 
   host.querySelector("[data-hist-novo]").addEventListener("click", () => abrirFormHistorico(null));
+  host.querySelector("[data-hist-exportar]").addEventListener("click", exportarHistoricoExcel);
   host.querySelector("[data-hist-cancelar]").addEventListener("click", fecharFormHistorico);
   host.querySelector("[data-hist-form]").addEventListener("submit", salvarRegistroHistorico);
   aplicar();
+}
+
+// Exporta o recorte atual do histórico (respeitando os filtros) para .xlsx.
+function exportarHistoricoExcel() {
+  const linhas = adm.historicoFiltrado || [];
+  if (!linhas.length) {
+    alert("Não há registros para exportar com os filtros atuais.");
+    return;
+  }
+  if (typeof XLSX === "undefined") {
+    alert("Não foi possível carregar a biblioteca de exportação. Verifique sua conexão e recarregue a página.");
+    return;
+  }
+
+  const capitalizar = (s) => (s && s !== "—") ? s.charAt(0) + s.slice(1).toLowerCase() : "";
+  const dados = linhas.map((r) => ({
+    "Data": fmtDataHist(r.data_inicio),
+    "Participante": r.participante || "",
+    "E-mail": r.email || "",
+    "Especificação técnica / orientação": r.especificacao || "",
+    "Função": r.funcao || "",
+    "Empresa": r.empresa || "",
+    "Matrícula/CPF": r.matricula || "",
+    "Local": r.local || "",
+    "Gerência": r.gerencia || "",
+    "Modalidade": capitalizar(r.modalidade),
+    "Categoria": capitalizar(r.categoria),
+    "Instrutor/Fiscal": r.instrutor || "",
+    "Nota": (typeof r.nota === "number" && !isNaN(r.nota)) ? r.nota : "",
+    "Resultado": r.aprovacao || "",
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(dados);
+  // Larguras de coluna aproximadas para o arquivo abrir legível.
+  ws["!cols"] = [
+    { wch: 11 }, { wch: 26 }, { wch: 26 }, { wch: 46 }, { wch: 24 }, { wch: 14 },
+    { wch: 16 }, { wch: 20 }, { wch: 12 }, { wch: 11 }, { wch: 13 }, { wch: 22 },
+    { wch: 7 }, { wch: 11 },
+  ];
+  const wb = XLSX.utils.book_new();
+  const nomeTreino = (window.getSubareaMeta ? getSubareaMeta(adm.subarea).nome : "Histórico").slice(0, 28);
+  XLSX.utils.book_append_sheet(wb, ws, nomeTreino);
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  // O id da subárea já é um slug ASCII (ex.: alivio_termico), evita lidar com acentos.
+  const slug = (adm.subarea || "historico").replace(/_/g, "-");
+  XLSX.writeFile(wb, `historico-${slug}-${hoje}.xlsx`);
 }
 
 // ------------------------- edição do histórico (registros da planilha) ----
@@ -393,6 +442,9 @@ function desenharTabelaHistorico(dados, f) {
     if (f.result === "reprov" && r.aprovacao !== "REPROVADO") return false;
     return true;
   });
+
+  // Guarda o recorte atual para o botão "Exportar Excel" usar os mesmos filtros.
+  adm.historicoFiltrado = linhas;
 
   // KPIs sobre o recorte filtrado.
   const kpis = document.querySelector("[data-hist-kpis]");
