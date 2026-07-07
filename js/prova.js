@@ -352,18 +352,22 @@ function renderResultado(t, gabarito) {
       </div>
       <hr class="trilho" />
       <div class="toolbar" style="justify-content:center">
-        <button class="btn btn--primary" data-pdf>Baixar certificado (PDF)</button>
+        ${aprovado ? '<button class="btn btn--primary" data-pdf>Baixar certificado (PDF)</button>' : ""}
         <a class="btn btn--ghost" href="${estado.perfil.role === "admin" ? "dashboard.html" : "perfil.html"}">
           ${estado.perfil.role === "admin" ? "Ir ao painel" : "Ver meu histórico"}
         </a>
       </div>
-      <p class="muted small" style="margin-top:1rem">Código de verificação: ${codigo}</p>
+      ${aprovado
+        ? `<p class="muted small" style="margin-top:1rem">Código de verificação: ${codigo}</p>`
+        : `<p class="muted small" style="margin-top:1rem">O certificado só é emitido quando a nota mínima é atingida. Você pode refazer a prova.</p>`}
     </div>
     <h2 style="margin-top:1.6rem">Revisão da prova</h2>
     <p class="muted">Confira o gabarito de cada questão.</p>
     ${revisao}`;
 
-  host.querySelector("[data-pdf]").addEventListener("click", async (e) => {
+  // O certificado só existe para quem atingiu a nota mínima.
+  const btnPdf = host.querySelector("[data-pdf]");
+  if (btnPdf) btnPdf.addEventListener("click", async (e) => {
     travarBtn(e.target, true, "Gerando…");
     await gerarCertificadoPDF({
       aluno_nome: t.aluno_nome, matricula: estado.perfil.matricula,

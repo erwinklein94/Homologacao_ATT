@@ -75,13 +75,17 @@ function renderHistorico(perfil, tentativas) {
     const badge = t.aprovado
       ? '<span class="badge badge--ok badge--dot">Aprovado</span>'
       : '<span class="badge badge--erro badge--dot">Reprovado</span>';
+    // O certificado só é emitido para provas aprovadas (nota mínima atingida).
+    const pdf = t.aprovado
+      ? `<button class="btn btn--ghost btn--sm" data-pdf="${t.id}">PDF</button>`
+      : '<span class="muted small">—</span>';
     return `<tr>
       <td>${escaparHtml(t.prova_titulo)}</td>
       <td><b>${fmtNota(t.nota)}</b> <span class="muted small">(${t.acertos}/${t.total})</span></td>
       <td>${badge}</td>
       <td>${escaparHtml(t.instrutor_nome)}</td>
       <td class="nowrap">${fmtData(t.realizado_em)}</td>
-      <td><button class="btn btn--ghost btn--sm" data-pdf="${t.id}">PDF</button></td>
+      <td>${pdf}</td>
     </tr>`;
   }).join("");
 
