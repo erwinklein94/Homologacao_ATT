@@ -551,23 +551,15 @@ function conferirSeed() {
   }
 }
 
-async function carregarSeed(e, opcoes = {}) {
+async function carregarSeed(e) {
   const btn = e?.target;
-  const substituirArea = !!opcoes.substituirArea;
   const seedArea = obterSeedArea();
   if (!seedArea.length) {
     alert("Não há provas padrão configuradas para " + nomeAreaAtual() + ".");
     return;
   }
-  travarBtn(btn, true, substituirArea ? "Substituindo…" : "Carregando…");
+  travarBtn(btn, true, "Carregando…");
   try {
-    if (substituirArea) {
-      let del = sb.from("provas").delete().eq("area", adm.perfil.area);
-      if (adm.subarea) del = del.eq("subarea", adm.subarea); // não apaga provas dos outros treinamentos
-      const { error: e0 } = await del;
-      if (e0) throw e0;
-    }
-
     for (const p of seedArea) {
       // Cria/atualiza a prova pelo código (único por área) e devolve o id.
       const registroProva = { area: adm.perfil.area, codigo: p.codigo, titulo: p.titulo, descricao: p.descricao, nota_minima: p.nota_minima, ativo: true, atualizado_em: new Date().toISOString() };
@@ -597,11 +589,11 @@ async function carregarSeed(e, opcoes = {}) {
     await carregarProvas();
     conferirSeed();
     renderListaProvas();
-    alert(substituirArea ? "Provas da área substituídas com sucesso!" : "Provas carregadas com sucesso!");
+    alert("Provas carregadas com sucesso!");
   } catch (err) {
     console.error(err);
     alert("Não foi possível carregar as provas: " + (err.message || err));
-    travarBtn(btn, false, substituirArea ? "Substituir provas da área" : "Carregar provas padrão da área");
+    travarBtn(btn, false, "Carregar provas padrão da área");
   }
 }
 
@@ -633,7 +625,6 @@ function renderListaProvas() {
       <div class="toolbar">
         <h2 style="margin:0">Provas cadastradas</h2>
         <span class="spacer"></span>
-        ${adm.perfil?.area === "alivio_tensao" && obterSeedArea().length ? '<button class="btn btn--ghost btn--sm" data-reset-seed>Substituir provas do treinamento</button>' : ''}
         <button class="btn btn--ghost btn--sm" data-nova-prova>+ Nova prova</button>
       </div>
       ${cards}
@@ -642,14 +633,6 @@ function renderListaProvas() {
 
   host.querySelectorAll("[data-editar]").forEach((b) =>
     b.addEventListener("click", () => abrirEditor(b.dataset.editar)));
-  const btnReset = host.querySelector("[data-reset-seed]");
-  if (btnReset) {
-    btnReset.addEventListener("click", (evt) => {
-      const qtd = obterSeedArea().length;
-      const ok = confirm(`Isso vai excluir as provas atuais do treinamento "${getSubareaMeta(adm.subarea).nome}" e carregar ${qtd} prova(s) padrão. As provas dos outros treinamentos e o histórico de tentativas já realizadas serão mantidos. Deseja continuar?`);
-      if (ok) carregarSeed(evt, { substituirArea: true });
-    });
-  }
   host.querySelector("[data-nova-prova]").addEventListener("click", criarProvaVazia);
 }
 
