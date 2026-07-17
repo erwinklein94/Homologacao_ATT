@@ -63,13 +63,10 @@ window.getSubareaEscolhida = getSubareaEscolhida;
 window.setSubareaEscolhida = setSubareaEscolhida;
 window.getSubareaMeta = getSubareaMeta;
 
-// Especificações técnicas / orientações disponíveis no cadastro do aluno.
-window.ESPECIFICACOES_ATT = [
-  "ENG-ETS-ON-T003/06.00 - ALÍVIO DE TENSÕES TÉRMICAS",
-  "ENG-ETS-ON-T003/06.00 - ALÍVIO DE TENSÕES TÉRMICAS EM TRILHOS",
-  "ENG-ETS-ON-T009/04.00-TEMPERATURAS NEUTRAS DE REFERÊNCIA PARA SERVIÇOS DE TRILHO",
-  "MAN-VP-L-PRO-TR-0036-01 – ALÍVIO DE TENSÕES TÉRMICAS EM TRILHO",
-];
+// Especificação técnica / orientação padrão de TODO o site: todas as provas
+// e treinamentos são baseados neste procedimento.
+window.ESPECIFICACAO_PADRAO_ATT = "MAN-VP-L-PRO-TR-0036-01 – ALÍVIO DE TENSÕES TÉRMICAS EM TRILHO";
+window.ESPECIFICACOES_ATT = [window.ESPECIFICACAO_PADRAO_ATT];
 
 // Classifica um registro (prova/tentativa) de alivio_tensao pelo treinamento.
 // Registros antigos sem coluna preenchida contam como Alívio de tensão térmica.
@@ -151,7 +148,7 @@ async function garantirPerfilArea(areaPreferida = null, dados = {}) {
 
   let { data, error } = await sb
     .from("profiles")
-    .select("id, nome, matricula, role, area")
+    .select("id, nome, matricula, empresa, role, area")
     .eq("id", sessao.user.id)
     .eq("area", area)
     .maybeSingle();
@@ -172,7 +169,7 @@ async function garantirPerfilArea(areaPreferida = null, dados = {}) {
     const ins = await sb
       .from("profiles")
       .insert(novo)
-      .select("id, nome, matricula, role, area")
+      .select("id, nome, matricula, empresa, role, area")
       .single();
 
     if (ins.error) {

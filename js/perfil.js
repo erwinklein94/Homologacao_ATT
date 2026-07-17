@@ -1,10 +1,14 @@
 // =====================================================================
-// perfil.js — área do aluno: seus dados + histórico de provas
+// perfil.js — área do aluno: seus dados (editáveis) + histórico de provas
 // =====================================================================
+
+let _perfilAtual = null;
+let _tentativas = [];
 
 document.addEventListener("DOMContentLoaded", async () => {
   const perfil = await protegerPagina();
   if (!perfil) return;
+  _perfilAtual = perfil;
 
   const { data, error } = await sb
     .from("tentativas")
@@ -13,10 +17,111 @@ document.addEventListener("DOMContentLoaded", async () => {
     .eq("area", perfil.area)
     .order("realizado_em", { ascending: false });
 
-  const tentativas = error ? [] : (data || []);
-  renderResumo(perfil, tentativas);
-  renderHistorico(perfil, tentativas);
+  _tentativas = error ? [] : (data || []);
+  renderResumo(perfil, _tentativas);
+  renderEditarCadastro(perfil);
+  renderHistorico(perfil, _tentativas);
 });
+
+// ---------------------------------------------------------- editar cadastro
+function renderEditarCadastro(perfil) {
+  const host = document.querySelector("[data-perfil-editar]");
+  if (!host) return;
+
+  host.innerHTML = `
+    <h2 style="margin-top:1.6rem">Meus dados</h2>
+    <div class="card card--chanfro">
+      <form data-editar-form class="perfil-editar-form" novalidate>
+        <div class="row">
+          <div class="field" style="flex:2;min-width:220px">
+            <label for="pe-nome">Nome completo</label>
+            <input id="pe-nome" class="input" name="nome" required value="${escaparHtml(perfil.nome || "")}" />
+          </div>
+          <div class="field" style="min-width:170px">
+            <label for="pe-matricula">Matrícula</label>
+            <input id="pe-matricula" class="input" name="matricula" value="${escaparHtml(perfil.matricula || "")}" />
+          </div>
+          <div class="field" style="min-width:170px">
+            <label for="pe-empresa">Empresa</label>
+            <input id="pe-empresa" class="input" name="empresa" value="${escaparHtml(perfil.empresa || "")}" placeholder="Ex.: Rumo" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field" style="min-width:210px">
+            <label for="pe-senha">Nova senha (opcional)</label>
+            <input id="pe-senha" class="input" type="password" name="senha" minlength="8" autocomplete="new-password" placeholder="Mínimo 8 caracteres" />
+          </div>
+          <div class="field" style="min-width:210px">
+            <label for="pe-senha2">Confirmar nova senha</label>
+            <input id="pe-senha2" class="input" type="password" name="senha2" autocomplete="new-password" placeholder="Repita a nova senha" />
+          </div>
+        </div>
+        <p class="muted small" style="margin:.2rem 0 .8rem">
+          O e-mail de acesso (${escaparHtml(perfil.email)}) não pode ser alterado por aqui — fale com o administrador.
+        </p>
+        <div class="toolbar">
+          <button class="btn btn--primary" type="submit" data-editar-salvar>Salvar meus dados</button>
+          <span class="muted small" data-editar-status></span>
+        </div>
+      </form>
+    </div>`;
+
+  host.querySelector("[data-editar-form]").addEventListener("submit", salvarCadastro);
+}
+
+async function salvarCadastro(e) {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const status = form.querySelector("[data-editar-status]");
+  const btn = form.querySelector("[data-editar-salvar]");
+
+  const nome = form.nome.value.trim();
+  const matricula = form.matricula.value.trim();
+  const empresa = form.empresa.value.trim();
+  const senha = form.senha.value;
+  const senha2 = form.senha2.value;
+
+  if (!nome) { status.textContent = "Informe o nome completo."; form.nome.focus(); return; }
+  if (senha || senha2) {
+    if (senha.length < 8) { status.textContent = "A nova senha precisa de pelo menos 8 caracteres."; form.senha.focus(); return; }
+    if (senha !== senha2) { status.textContent = "As senhas não conferem."; form.senha2.focus(); return; }
+  }
+
+  travar(btn, true, "Salvando…");
+  status.textContent = "";
+
+  // Atualiza o perfil e o cadastro de aluno (Histórico) numa única RPC.
+  const { error } = await sb.rpc("atualizar_meu_cadastro", {
+    p_nome: nome, p_matricula: matricula, p_empresa: empresa,
+  });
+  if (error) {
+    travar(btn, false, "Salvar meus dados");
+    status.textContent = "Erro ao salvar: " + error.message;
+    return;
+  }
+
+  if (senha) {
+    const { error: e2 } = await sb.auth.updateUser({ password: senha });
+    if (e2) {
+      travar(btn, false, "Salvar meus dados");
+      status.textContent = "Dados salvos, mas a senha não foi alterada: " + e2.message;
+      return;
+    }
+    form.senha.value = "";
+    form.senha2.value = "";
+  }
+
+  // Recarrega o perfil para refletir o novo nome no cabeçalho e no resumo.
+  window.limparPerfilCache();
+  const novo = await getPerfil();
+  if (novo) {
+    _perfilAtual = novo;
+    montarCabecalho(novo);
+    renderResumo(novo, _tentativas);
+  }
+  travar(btn, false, "Salvar meus dados");
+  status.textContent = senha ? "Dados e senha atualizados!" : "Dados atualizados!";
+}
 
 function renderResumo(perfil, tentativas) {
   const host = document.querySelector("[data-perfil-resumo]");

@@ -229,6 +229,14 @@ function renderTextoQuestao(texto) {
   return partes.join("");
 }
 
+// Galeria de imagens (URLs gravadas pelo editor de provas do administrador).
+function renderImagensLista(lista, cls) {
+  const urls = (Array.isArray(lista) ? lista : []).filter((u) => typeof u === "string" && u);
+  if (!urls.length) return "";
+  return `<span class="${cls}">${urls.map((u, k) =>
+    `<img src="${escaparHtml(u)}" alt="Imagem ${k + 1}" loading="lazy" />`).join("")}</span>`;
+}
+
 function renderExecucao() {
   mostrarTela("prova");
   const host = document.querySelector("[data-tela='prova']");
@@ -239,11 +247,12 @@ function renderExecucao() {
       <label class="alt" data-alt data-questao="${q.id}" data-valor="${a.id}">
         <input type="radio" name="q-${q.id}" value="${a.id}" />
         <span class="alt__key">${a.id})</span>
-        <span>${escaparHtml(a.texto)}</span>
+        <span class="alt__body">${escaparHtml(a.texto)}${renderImagensLista(a.imagens, "alt__imgs")}</span>
       </label>`).join("");
     return `
       <article class="questao" data-questao-card="${q.id}">
         <p class="questao__enunciado"><span class="questao__num">${idx + 1}</span>${renderTextoQuestao(q.enunciado)}</p>
+        ${renderImagensLista(q.imagens, "questao-imagens")}
         <div class="alts">${alts}</div>
       </article>`;
   }).join("");
@@ -335,10 +344,11 @@ function renderResultado(t, gabarito) {
       let cls = "alt", tag = "";
       if (a.id === correta) { cls += " is-correct"; tag = '<span class="alt__tag">Correta</span>'; }
       else if (a.id === marcada) { cls += " is-wrong"; tag = '<span class="alt__tag">Sua resposta</span>'; }
-      return `<div class="${cls}"><span class="alt__key">${a.id})</span><span>${escaparHtml(a.texto)}</span>${tag}</div>`;
+      return `<div class="${cls}"><span class="alt__key">${a.id})</span><span class="alt__body">${escaparHtml(a.texto)}${renderImagensLista(a.imagens, "alt__imgs")}</span>${tag}</div>`;
     }).join("");
     return `<article class="questao">
       <p class="questao__enunciado"><span class="questao__num">${idx + 1}</span>${renderTextoQuestao(q.enunciado)}</p>
+      ${renderImagensLista(q.imagens, "questao-imagens")}
       <div class="alts">${alts}</div></article>`;
   }).join("");
 

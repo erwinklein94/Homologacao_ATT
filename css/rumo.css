@@ -976,3 +976,24 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
 .questao__enunciado { white-space: normal; }
 .questao-midia { display: block; margin: .75rem 0 1rem; }
 .questao-midia img { display: block; max-width: min(100%, 680px); border: 1px solid var(--borda); border-radius: var(--rumo-raio-sm); background: #fff; box-shadow: var(--sombra-card); }
+
+/* ---- Imagens nas questões e alternativas (prova e revisão) ---- */
+.questao-imagens { display: flex; flex-wrap: wrap; gap: .6rem; margin: .2rem 0 1rem; }
+.questao-imagens img { max-width: min(100%, 480px); max-height: 340px; border: 1px solid var(--borda); border-radius: var(--rumo-raio-sm); background: #fff; box-shadow: var(--sombra-card); }
+.alt__body { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.alt__imgs { display: flex; flex-wrap: wrap; gap: .5rem; }
+.alt__imgs img { max-width: min(100%, 260px); max-height: 200px; border: 1px solid var(--borda); border-radius: var(--rumo-raio-sm); background: #fff; }
+
+/* ---- Editor de provas: miniaturas e botão de adicionar imagens ---- */
+.editor-imgs { display: flex; flex-wrap: wrap; gap: .5rem; margin: .3rem 0 .5rem; }
+.editor-imgs--alt { margin-left: 2.6rem; }
+.editor-img { position: relative; display: inline-block; }
+.editor-img img { width: 92px; height: 92px; object-fit: cover; border: 1px solid var(--borda); border-radius: var(--rumo-raio-sm); background: #fff; display: block; }
+.editor-img button { position: absolute; top: -7px; right: -7px; width: 22px; height: 22px; line-height: 1; border: none; border-radius: 50%; background: var(--rumo-erro); color: #fff; font-weight: 700; cursor: pointer; box-shadow: var(--sombra-card); }
+.editor-img button:hover { filter: brightness(1.1); }
+.editor-add-img { cursor: pointer; align-self: flex-start; }
+.editor-alt-bloco { margin-bottom: .5rem; }
+.editor-alt-bloco .editor-alt { margin-bottom: .25rem; }
+
+/* ---- Perfil do aluno: edição do cadastro ---- */
+.perfil-editar-form .row { align-items: flex-end; }

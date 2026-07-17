@@ -150,7 +150,7 @@ function renderHistorico() {
           <div class="row">
             <div class="field" style="flex:2;min-width:280px">
               <label for="hf-especificacao">Especificação técnica / orientação</label>
-              <input id="hf-especificacao" class="input" name="especificacao" placeholder="Ex.: MAN-VP-L-PRO-TR-0036-01 – ALÍVIO DE TENSÕES…" />
+              <input id="hf-especificacao" class="input" name="especificacao" value="${escaparHtml(window.ESPECIFICACAO_PADRAO_ATT)}" />
             </div>
             <div class="field" style="min-width:140px">
               <label for="hf-modalidade">Modalidade</label>
@@ -343,7 +343,7 @@ function abrirFormHistorico(id) {
     form.funcao.value = r.funcao || "";
     form.empresa.value = r.empresa || "";
     form.instrutor.value = r.instrutor || "";
-    form.especificacao.value = r.especificacao || "";
+    form.especificacao.value = r.especificacao || window.ESPECIFICACAO_PADRAO_ATT;
     form.modalidade.value = (r.modalidade || "TEÓRICO").toUpperCase();
     form.categoria.value = (r.categoria || "HOMOLOGAÇÃO").toUpperCase();
     form.data_inicio.value = (r.data_inicio || "").slice(0, 10);
@@ -659,16 +659,46 @@ async function abrirEditor(provaId) {
   adm.questoes = error ? [] : (data || []).map((q) => ({
     id: q.id, ordem: q.ordem, enunciado: q.enunciado,
     alternativas: normalizarAlts(q.alternativas), correta: q.correta, justificativa: q.justificativa || "",
+    imagens: Array.isArray(q.imagens) ? q.imagens : [],
   }));
   desenharEditor();
 }
 
-// Garante sempre 5 alternativas a–e com a estrutura {id, texto}.
+// Garante sempre 5 alternativas a–e com a estrutura {id, texto, imagens}.
 function normalizarAlts(alts) {
   const base = ["a", "b", "c", "d", "e"];
   const map = {};
-  (alts || []).forEach((a) => { map[a.id] = a.texto; });
-  return base.map((id) => ({ id, texto: map[id] || "" }));
+  (alts || []).forEach((a) => { map[a.id] = a; });
+  return base.map((id) => ({
+    id,
+    texto: map[id]?.texto || "",
+    imagens: Array.isArray(map[id]?.imagens) ? map[id].imagens : [],
+  }));
+}
+
+// Envia os arquivos ao Storage (bucket provas-imagens) e devolve as URLs públicas.
+async function subirImagens(files) {
+  const urls = [];
+  for (const file of files || []) {
+    const ext = ((file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "")) || "png";
+    const caminho = `${adm.provaSel.id}/${crypto.randomUUID()}.${ext}`;
+    const { error } = await sb.storage.from("provas-imagens")
+      .upload(caminho, file, { cacheControl: "31536000", upsert: false });
+    if (error) {
+      alert(`Falha ao enviar a imagem "${file.name}": ${error.message}`);
+      continue;
+    }
+    urls.push(sb.storage.from("provas-imagens").getPublicUrl(caminho).data.publicUrl);
+  }
+  return urls;
+}
+
+function miniaturaImg(url, botaoAttrs, alt) {
+  return `
+    <span class="editor-img">
+      <img src="${escaparHtml(url)}" alt="${escaparHtml(alt)}" loading="lazy" />
+      <button type="button" ${botaoAttrs} title="Remover imagem">&times;</button>
+    </span>`;
 }
 
 function desenharEditor() {
@@ -725,12 +755,25 @@ function desenharEditor() {
 }
 
 function bloEditorQuestao(q, i) {
-  const alts = q.alternativas.map((a) => `
-    <div class="editor-alt">
-      <input type="radio" name="correta-${i}" value="${a.id}" ${a.id === q.correta ? "checked" : ""} title="Marcar como correta" />
-      <span class="alt__key">${a.id})</span>
-      <input class="input" data-alt-texto="${i}" data-alt-id="${a.id}" value="${escaparHtml(a.texto)}" placeholder="Texto da alternativa ${a.id}" />
-    </div>`).join("");
+  const imgsQuestao = (q.imagens || []).map((url, k) =>
+    miniaturaImg(url, `data-rm-img-q="${i}" data-img-idx="${k}"`, `Imagem ${k + 1} da questão ${i + 1}`)).join("");
+
+  const alts = q.alternativas.map((a) => {
+    const imgsAlt = (a.imagens || []).map((url, k) =>
+      miniaturaImg(url, `data-rm-img-alt="${i}" data-alt-ref="${a.id}" data-img-idx="${k}"`, `Imagem ${k + 1} da alternativa ${a.id}`)).join("");
+    return `
+    <div class="editor-alt-bloco">
+      <div class="editor-alt">
+        <input type="radio" name="correta-${i}" value="${a.id}" ${a.id === q.correta ? "checked" : ""} title="Marcar como correta" />
+        <span class="alt__key">${a.id})</span>
+        <input class="input" data-alt-texto="${i}" data-alt-id="${a.id}" value="${escaparHtml(a.texto)}" placeholder="Texto da alternativa ${a.id}" />
+        <label class="btn btn--ghost btn--sm editor-add-img" title="Adicionar imagens à alternativa ${a.id}">
+          + 🖼<input type="file" accept="image/*" multiple hidden data-file-alt="${i}" data-alt-ref="${a.id}" />
+        </label>
+      </div>
+      ${imgsAlt ? `<div class="editor-imgs editor-imgs--alt">${imgsAlt}</div>` : ""}
+    </div>`;
+  }).join("");
 
   return `
     <div class="editor-questao" data-q-card="${i}">
@@ -742,7 +785,14 @@ function bloEditorQuestao(q, i) {
         <label>Enunciado</label>
         <textarea class="textarea" data-q-enunciado="${i}" rows="2">${escaparHtml(q.enunciado)}</textarea>
       </div>
-      <div class="field__hint" style="margin-bottom:.4rem">Marque o círculo da alternativa correta.</div>
+      <div class="field">
+        <label>Imagens da questão (opcional — aparecem abaixo do enunciado)</label>
+        ${imgsQuestao ? `<div class="editor-imgs">${imgsQuestao}</div>` : ""}
+        <label class="btn btn--ghost btn--sm editor-add-img">+ Adicionar imagens
+          <input type="file" accept="image/*" multiple hidden data-file-q="${i}" />
+        </label>
+      </div>
+      <div class="field__hint" style="margin-bottom:.4rem">Marque o círculo da alternativa correta. O botão "+ 🖼" adiciona imagens à alternativa.</div>
       ${alts}
       <div class="field" style="margin-top:.5rem">
         <label>Justificativa (opcional)</label>
@@ -760,7 +810,7 @@ function ligarEditor(host) {
     lerEditorParaEstado(host);
     adm.questoes.push({
       id: null, ordem: adm.questoes.length + 1, enunciado: "",
-      alternativas: normalizarAlts([]), correta: "a", justificativa: "",
+      alternativas: normalizarAlts([]), correta: "a", justificativa: "", imagens: [],
     });
     desenharEditor();
   });
@@ -768,6 +818,48 @@ function ligarEditor(host) {
     b.addEventListener("click", () => {
       lerEditorParaEstado(host);
       adm.questoes.splice(Number(b.dataset.rmQuestao), 1);
+      desenharEditor();
+    }));
+
+  // Imagens da questão: envia ao Storage e guarda as URLs no estado.
+  host.querySelectorAll("[data-file-q]").forEach((inp) =>
+    inp.addEventListener("change", async () => {
+      if (!inp.files?.length) return;
+      lerEditorParaEstado(host);
+      const status = host.querySelector("[data-status-editor]");
+      if (status) status.textContent = "Enviando imagem(ns)…";
+      const urls = await subirImagens(inp.files);
+      const q = adm.questoes[Number(inp.dataset.fileQ)];
+      if (urls.length && q) q.imagens.push(...urls);
+      desenharEditor();
+    }));
+
+  // Imagens da alternativa.
+  host.querySelectorAll("[data-file-alt]").forEach((inp) =>
+    inp.addEventListener("change", async () => {
+      if (!inp.files?.length) return;
+      lerEditorParaEstado(host);
+      const status = host.querySelector("[data-status-editor]");
+      if (status) status.textContent = "Enviando imagem(ns)…";
+      const urls = await subirImagens(inp.files);
+      const alt = (adm.questoes[Number(inp.dataset.fileAlt)]?.alternativas || [])
+        .find((a) => a.id === inp.dataset.altRef);
+      if (urls.length && alt) alt.imagens.push(...urls);
+      desenharEditor();
+    }));
+
+  host.querySelectorAll("[data-rm-img-q]").forEach((b) =>
+    b.addEventListener("click", () => {
+      lerEditorParaEstado(host);
+      adm.questoes[Number(b.dataset.rmImgQ)]?.imagens.splice(Number(b.dataset.imgIdx), 1);
+      desenharEditor();
+    }));
+  host.querySelectorAll("[data-rm-img-alt]").forEach((b) =>
+    b.addEventListener("click", () => {
+      lerEditorParaEstado(host);
+      const alt = (adm.questoes[Number(b.dataset.rmImgAlt)]?.alternativas || [])
+        .find((a) => a.id === b.dataset.altRef);
+      if (alt) alt.imagens.splice(Number(b.dataset.imgIdx), 1);
       desenharEditor();
     }));
   host.querySelector("[data-salvar]").addEventListener("click", () => salvarProva(host));
@@ -787,9 +879,15 @@ function lerEditorParaEstado(host) {
     if (!card) return q;
     const enun = card.querySelector(`[data-q-enunciado="${i}"]`).value.trim();
     const justif = card.querySelector(`[data-q-justif="${i}"]`).value.trim();
-    const alts = ["a", "b", "c", "d", "e"].map((id) => ({
-      id, texto: card.querySelector(`[data-alt-texto="${i}"][data-alt-id="${id}"]`).value.trim(),
-    }));
+    // As imagens não ficam em inputs de texto: preserva as do estado atual.
+    const alts = ["a", "b", "c", "d", "e"].map((id) => {
+      const atual = q.alternativas.find((a) => a.id === id);
+      return {
+        id,
+        texto: card.querySelector(`[data-alt-texto="${i}"][data-alt-id="${id}"]`).value.trim(),
+        imagens: Array.isArray(atual?.imagens) ? atual.imagens : [],
+      };
+    });
     const sel = card.querySelector(`input[name="correta-${i}"]:checked`);
     return { ...q, enunciado: enun, justificativa: justif, alternativas: alts, correta: sel ? sel.value : "a" };
   });
@@ -800,11 +898,13 @@ async function salvarProva(host) {
   const p = adm.provaSel;
   const status = host.querySelector("[data-status-editor]");
 
-  // Validação simples e clara.
+  // Validação simples e clara: cada questão/alternativa precisa de texto OU imagem.
   for (let i = 0; i < adm.questoes.length; i++) {
     const q = adm.questoes[i];
-    if (!q.enunciado) { status.textContent = `A questão ${i + 1} está sem enunciado.`; return; }
-    if (q.alternativas.some((a) => !a.texto)) { status.textContent = `Preencha todas as alternativas da questão ${i + 1}.`; return; }
+    if (!q.enunciado && !(q.imagens || []).length) { status.textContent = `A questão ${i + 1} está sem enunciado.`; return; }
+    if (q.alternativas.some((a) => !a.texto && !(a.imagens || []).length)) {
+      status.textContent = `Preencha todas as alternativas da questão ${i + 1} (texto ou imagem).`; return;
+    }
   }
 
   const btn = host.querySelector("[data-salvar]");
@@ -825,6 +925,7 @@ async function salvarProva(host) {
         alternativas: q.alternativas,
         correta: q.correta,
         justificativa: q.justificativa || "",
+        imagens: q.imagens || [],
       })),
     });
     if (e1) throw e1;
