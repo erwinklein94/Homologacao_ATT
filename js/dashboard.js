@@ -14,6 +14,61 @@ const CORES = {
   cinza: "#6D838E",
 };
 
+// Exibe os valores diretamente sobre todos os gráficos. Em gráficos de
+// proporção, mostra também a porcentagem correspondente ao total.
+const valoresVisiveisPlugin = {
+  id: "valoresVisiveis",
+  afterDatasetsDraw(chart) {
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+
+    chart.data.datasets.forEach((dataset, datasetIndex) => {
+      const meta = chart.getDatasetMeta(datasetIndex);
+      if (meta.hidden) return;
+
+      const valores = (dataset.data || []).map(Number);
+      const total = valores.reduce((soma, valor) =>
+        soma + (Number.isFinite(valor) ? Math.max(0, valor) : 0), 0);
+      const ehPercentual = ["doughnut", "pie", "polarArea"].includes(meta.type);
+
+      meta.data.forEach((elemento, indice) => {
+        const valor = valores[indice];
+        if (!Number.isFinite(valor) || (ehPercentual && valor === 0)) return;
+
+        const numero = valor.toLocaleString("pt-BR", {
+          minimumFractionDigits: Number.isInteger(valor) ? 0 : 1,
+          maximumFractionDigits: 1,
+        });
+        const percentual = total > 0 ? Math.round((valor / total) * 100) : 0;
+        const texto = ehPercentual ? `${numero} · ${percentual}%` : numero;
+        const posicao = elemento.tooltipPosition();
+        const tamanhoFonte = chart.width < 460 ? 9 : 11;
+
+        ctx.save();
+        ctx.font = `700 ${tamanhoFonte}px Verdana, Geneva, Tahoma, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        const largura = ctx.measureText(texto).width + 12;
+        const altura = tamanhoFonte + 8;
+        let x = posicao.x;
+        let y = meta.type === "line" ? posicao.y - 15 : posicao.y;
+
+        x = Math.max(chartArea.left + largura / 2, Math.min(chartArea.right - largura / 2, x));
+        y = Math.max(chartArea.top + altura / 2, Math.min(chartArea.bottom - altura / 2, y));
+
+        ctx.fillStyle = ehPercentual ? "rgba(255,255,255,.94)" : "rgba(0,56,101,.92)";
+        ctx.fillRect(x - largura / 2, y - altura / 2, largura, altura);
+        ctx.fillStyle = ehPercentual ? CORES.azul : "#FFFFFF";
+        ctx.fillText(texto, x, y + .5);
+        ctx.restore();
+      });
+    });
+  },
+};
+
+Chart.register(valoresVisiveisPlugin);
+
 const painel = {
   perfil: null,
   tentativas: [],
