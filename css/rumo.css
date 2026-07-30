@@ -1688,9 +1688,11 @@ h3 { font-size: 1rem; letter-spacing: -.015em; }
   max-width: 520px;
   margin: 0 0 1rem;
   color: var(--rumo-azul);
-  font-size: clamp(2.4rem, 4vw, 3.7rem);
-  line-height: .98;
+  font-size: clamp(2.4rem, 3.2vw, 3rem);
+  line-height: 1.02;
   letter-spacing: -.055em;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .brand-auth .login-intro > p {
