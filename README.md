@@ -84,7 +84,7 @@ As bibliotecas externas (Supabase, Chart.js, jsPDF) são carregadas por CDN — 
 
 ## 3. Preparar o Supabase (projeto novo — rodar UMA vez)
 
-Este repositório usa o projeto **`zupiomlphokfpuufzyog`**, já configurado em `js/config.js`.
+Este repositório usa o projeto **`wytvpbrraywqtwanehlm`**, já configurado em `js/config.js`.
 No **SQL Editor** do projeto, rode nesta ordem:
 
 1. `sql/schema.sql` — tabelas, RLS e gatilhos;

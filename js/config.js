@@ -11,6 +11,6 @@
 // elas ignoram o RLS e dão acesso total ao banco.
 // =====================================================================
 window.SUPABASE_CONFIG = {
-  url: "https://zupiomlphokfpuufzyog.supabase.co",
-  publishableKey: "sb_publishable_4xMPd74xmky0Uo-omUG89Q_C5jZuL88"
+  url: "https://wytvpbrraywqtwanehlm.supabase.co",
+  publishableKey: "sb_publishable_Kj0b0q9Lqhdx5fVVIhOEyQ_Jr3nR2d9"
 };
