@@ -233,6 +233,9 @@ function montarCabecalho(perfil) {
   const links = (ehAdmin ? linksAdmin : linksAluno)
     .map(([href, txt]) => `<a href="${href}"${href === atual ? ' class="is-active"' : ""}>${txt}</a>`)
     .join("");
+  const modoApresentacao = ehAdmin && atual === "dashboard.html"
+    ? '<button type="button" class="nav__presentation" data-modo-apresentacao aria-pressed="false">Modo Apresentação</button>'
+    : "";
 
   const inicial = (perfil.nome || perfil.email || "?").trim().charAt(0).toUpperCase();
   const papel = ehAdmin
@@ -261,7 +264,7 @@ function montarCabecalho(perfil) {
         <span class="brand__sep"></span>
         <span class="brand__app">${escaparHtml(area.titulo)}<span>${escaparHtml(area.subtitulo)}</span></span>
       </a>
-      <nav class="nav" aria-label="Navegação principal">${links}</nav>
+      <nav class="nav" aria-label="Navegação principal">${modoApresentacao}${links}</nav>
       <div class="user-chip">
         <div class="user-chip__name">
           <b>${escaparHtml(perfil.nome || perfil.email)}</b>

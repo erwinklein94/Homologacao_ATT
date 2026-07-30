@@ -28,6 +28,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!perfil) return;
   painel.perfil = perfil;
   painel.subarea = perfil.area === "alivio_tensao" ? getSubareaEscolhida() : null;
+  configurarModoApresentacao();
 
   const [tentativas, alunos, historicoAlivio] = await Promise.all([
     carregarTentativas(perfil.area),
@@ -51,6 +52,81 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderPainelPadrao();
   }
 });
+
+// ========================================================= modo apresentação
+// Deixa apenas os gráficos visíveis e solicita tela cheia ao navegador.
+// O usuário ainda pode clicar em qualquer gráfico para ampliá-lo no modal.
+function configurarModoApresentacao() {
+  const botao = document.querySelector("[data-modo-apresentacao]");
+  if (!botao) return;
+  let entrouEmTelaCheia = false;
+
+  let barra = document.querySelector("[data-apresentacao-barra]");
+  if (!barra) {
+    barra = document.createElement("div");
+    barra.className = "apresentacao-barra";
+    barra.setAttribute("data-apresentacao-barra", "");
+    barra.innerHTML = `
+      <div class="apresentacao-barra__marca">
+        <img src="assets/rumo-logo-branco.png" alt="Rumo" />
+        <div>
+          <strong data-apresentacao-titulo>Painel de desempenho</strong>
+          <span>Clique em um gráfico para ampliar</span>
+        </div>
+      </div>
+      <button type="button" class="btn apresentacao-barra__sair" data-sair-apresentacao>
+        Sair do modo apresentação
+      </button>`;
+    document.body.appendChild(barra);
+  }
+
+  const atualizarGraficos = () => {
+    requestAnimationFrame(() => {
+      Object.values(painel.charts).forEach((chart) => chart?.resize());
+    });
+  };
+
+  const desativar = async ({ sairDaTelaCheia = true } = {}) => {
+    document.body.classList.remove("is-presentation");
+    botao.setAttribute("aria-pressed", "false");
+    if (sairDaTelaCheia && document.fullscreenElement && document.exitFullscreen) {
+      try { await document.exitFullscreen(); } catch (_) { /* modo visual já foi encerrado */ }
+    }
+    atualizarGraficos();
+  };
+
+  const ativar = async () => {
+    const titulo = document.querySelector(".page__head h1")?.textContent?.trim();
+    const tituloBarra = barra.querySelector("[data-apresentacao-titulo]");
+    if (titulo && tituloBarra) tituloBarra.textContent = titulo;
+
+    document.body.classList.add("is-presentation");
+    botao.setAttribute("aria-pressed", "true");
+    atualizarGraficos();
+
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      try {
+        await document.documentElement.requestFullscreen();
+        entrouEmTelaCheia = Boolean(document.fullscreenElement);
+      } catch (_) {
+        // Alguns navegadores bloqueiam tela cheia; o layout de apresentação continua ativo.
+      }
+    }
+  };
+
+  botao.addEventListener("click", ativar);
+  barra.querySelector("[data-sair-apresentacao]")?.addEventListener("click", () => desativar());
+  document.addEventListener("fullscreenchange", () => {
+    if (document.fullscreenElement) {
+      entrouEmTelaCheia = true;
+      return;
+    }
+    if (entrouEmTelaCheia && document.body.classList.contains("is-presentation")) {
+      entrouEmTelaCheia = false;
+      desativar({ sairDaTelaCheia: false });
+    }
+  });
+}
 
 // --------------------------------------------------------------- carga
 async function carregarTentativas(area) {
