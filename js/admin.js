@@ -441,13 +441,14 @@ async function salvarRegistroHistorico(e) {
 async function excluirRegistroHistorico(id) {
   const r = (adm.historico || []).find((x) => x.id === id);
   if (!r) return;
-  if (r.tentativa_id) {
-    alert("Registros de provas realizadas no site fazem parte da auditoria e não podem ser excluídos.");
-    return;
-  }
-  const ok = confirm(`Excluir do histórico o registro de ${r.participante || "participante"} (${fmtDataHist(r.data_inicio)})? Essa ação não pode ser desfeita.`);
+  const avisoTentativa = r.tentativa_id
+    ? " A tentativa, a homologação e o certificado associado também serão removidos."
+    : "";
+  const ok = confirm(`Excluir do histórico o registro de ${r.participante || "participante"} (${fmtDataHist(r.data_inicio)})?${avisoTentativa} Essa ação não pode ser desfeita.`);
   if (!ok) return;
-  const { error } = await sb.from("historico_alivio_tensao").delete().eq("id", id);
+  const { error } = r.tentativa_id
+    ? await sb.rpc("excluir_tentativa_admin", { p_tentativa_id: r.tentativa_id })
+    : await sb.from("historico_alivio_tensao").delete().eq("id", id);
   if (error) { alert("Erro ao excluir: " + error.message); return; }
   await carregarHistoricoAlivio();
   renderHistorico();
@@ -574,15 +575,21 @@ function desenharTabelaHistorico(dados, f) {
     const modalidade = r.modalidade && r.modalidade !== "—"
       ? r.modalidade.charAt(0) + r.modalidade.slice(1).toLowerCase() : "—";
     const homologacao = badgeHomologacao(r);
-    const acoes = r.tentativa_id
+    const acaoHomologacao = r.tentativa_id
       ? (r.status_homologacao === "pendente"
         ? `<div class="acoes-homologacao">
             <button class="btn btn--success btn--sm" data-tentativa-homologacao="${r.tentativa_id}" data-homologar="${r.tentativa_id}">Homologar</button>
             <button class="btn btn--danger btn--sm" data-tentativa-homologacao="${r.tentativa_id}" data-recusar="${r.tentativa_id}">Recusar</button>
           </div>`
         : '<span class="muted small">Decisão registrada</span>')
-      : `<button class="btn btn--ghost btn--sm" data-hist-editar="${r.id}">Editar</button>
-         <button class="btn btn--danger btn--sm" data-hist-excluir="${r.id}">Excluir</button>`;
+      : "";
+    const acoes = `<div class="acoes-registro">
+      ${acaoHomologacao}
+      <div class="acoes-homologacao">
+        <button class="btn btn--ghost btn--sm" data-hist-editar="${r.id}">Editar</button>
+        <button class="btn btn--danger btn--sm" data-hist-excluir="${r.id}">Excluir</button>
+      </div>
+    </div>`;
     return `<tr>
       <td class="nowrap">${fmtDataHist(r.data_inicio)}</td>
       <td>${escaparHtml(r.participante)}</td>
