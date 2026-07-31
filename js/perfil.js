@@ -127,7 +127,8 @@ function renderResumo(perfil, tentativas) {
   const host = document.querySelector("[data-perfil-resumo]");
   const total = tentativas.length;
   const melhor = total ? Math.max(...tentativas.map((t) => Number(t.nota))) : null;
-  const homologado = tentativas.some((t) => t.aprovado);
+  const homologado = tentativas.some((t) => t.aprovado && t.status_homologacao === "aprovada");
+  const pendentes = tentativas.filter((t) => t.aprovado && (t.status_homologacao || "pendente") === "pendente").length;
   const ultima = total ? tentativas[0] : null;
 
   host.innerHTML = `
@@ -144,7 +145,11 @@ function renderResumo(perfil, tentativas) {
         <div class="kpi__value" style="font-size:1.5rem;color:${homologado ? "var(--rumo-verde)" : "var(--rumo-texto)"}">
           ${homologado ? "Homologado" : "Pendente"}
         </div>
-        <div class="kpi__sub">${homologado ? "Você já tem ao menos uma aprovação." : "Faça uma prova e tire 7,0+."}</div>
+        <div class="kpi__sub">${homologado
+          ? "Você já tem ao menos um certificado liberado."
+          : (pendentes
+            ? `${pendentes} prova(s) aguardando conferência do administrador.`
+            : "Faça uma prova, atinja a nota mínima e aguarde a homologação.")}</div>
       </div>
       <div class="kpi kpi--verde">
         <div class="kpi__label">Melhor nota</div>
@@ -177,13 +182,22 @@ function renderHistorico(perfil, tentativas) {
   }
 
   const linhas = tentativas.map((t) => {
-    const badge = t.aprovado
-      ? '<span class="badge badge--ok badge--dot">Aprovado</span>'
-      : '<span class="badge badge--erro badge--dot">Reprovado</span>';
-    // O certificado só é emitido para provas aprovadas (nota mínima atingida).
-    const pdf = t.aprovado
+    const status = t.status_homologacao || (t.aprovado ? "pendente" : "nao_aplicavel");
+    const badge = !t.aprovado
+      ? '<span class="badge badge--erro badge--dot">Reprovado</span>'
+      : status === "aprovada"
+        ? '<span class="badge badge--ok badge--dot">Homologado</span>'
+        : status === "recusada"
+          ? '<span class="badge badge--erro badge--dot">Homologação recusada</span>'
+          : '<span class="badge badge--aviso badge--dot">Aguardando homologação</span>';
+    // O certificado só aparece depois da decisão positiva do administrador.
+    const pdf = t.aprovado && status === "aprovada"
       ? `<button class="btn btn--ghost btn--sm" data-pdf="${t.id}">PDF</button>`
-      : '<span class="muted small">—</span>';
+      : t.aprovado && status === "pendente"
+        ? '<span class="muted small">Aguardando liberação</span>'
+        : t.aprovado && status === "recusada"
+          ? `<span class="muted small" title="${escaparHtml(t.motivo_recusa || "")}">Não liberado</span>`
+          : '<span class="muted small">—</span>';
     return `<tr>
       <td>${escaparHtml(t.prova_titulo)}</td>
       <td><b>${fmtNota(t.nota)}</b> <span class="muted small">(${t.acertos}/${t.total})</span></td>
@@ -208,14 +222,8 @@ function renderHistorico(perfil, tentativas) {
   host.querySelectorAll("[data-pdf]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const t = tentativas.find((x) => x.id === btn.dataset.pdf);
-      travar(btn, true, "…");
-      await gerarCertificadoPDF({
-        aluno_nome: t.aluno_nome, matricula: perfil.matricula,
-        prova_titulo: t.prova_titulo, nota: t.nota, acertos: t.acertos, total: t.total,
-        aprovado: t.aprovado, instrutor_nome: t.instrutor_nome, realizado_em: t.realizado_em,
-        nota_minima: t.provas?.nota_minima ?? 7, codigo: gerarCodigoCert(t.id), area: perfil.area,
-      });
-      travar(btn, false, "PDF");
+      if (!t) return;
+      await baixarCertificadoHomologado(t.id, btn);
     });
   });
 }

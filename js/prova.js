@@ -116,7 +116,7 @@ function renderInicio() {
     <div class="page__head">
       <div class="eyebrow">Avaliação teórica</div>
       <h1>${escaparHtml(tituloArea)}</h1>
-      <p class="muted">Você precisa de nota <b>7,0</b> ou mais para ser homologado. Ao final, baixe seu certificado em PDF.</p>
+      <p class="muted">Você precisa de nota <b>7,0</b> ou mais. Depois da prova, o administrador confere o resultado e homologa a emissão do certificado.</p>
     </div>
     <hr class="trilho" />
     <div class="card card--chanfro stack">
@@ -333,7 +333,10 @@ async function enviarProva() {
 function renderResultado(t, gabarito) {
   mostrarTela("resultado");
   const host = document.querySelector("[data-tela='resultado']");
-  const aprovado = t.aprovado;
+  const atingiuNota = t.aprovado;
+  const statusHomologacao = t.status_homologacao || (atingiuNota ? "pendente" : "nao_aplicavel");
+  const homologado = atingiuNota && statusHomologacao === "aprovada";
+  const recusado = atingiuNota && statusHomologacao === "recusada";
   const codigo = t.codigo_cert || gerarCodigoCert(t.id);
 
   // Revisão: o gabarito só chegou ao navegador DEPOIS da correção no servidor.
@@ -353,40 +356,42 @@ function renderResultado(t, gabarito) {
   }).join("");
 
   host.innerHTML = `
-    <div class="card resultado ${aprovado ? "resultado--ok" : "resultado--reprovado"}">
+    <div class="card resultado ${homologado ? "resultado--ok" : (atingiuNota ? "resultado--pendente" : "resultado--reprovado")}">
       <div class="eyebrow">${escaparHtml(t.prova_titulo)}</div>
       <div class="resultado__nota">${fmtNota(t.nota)}</div>
       <div class="resultado__faixa">${t.acertos} de ${t.total} acertos</div>
-      <div class="${aprovado ? "selo selo--ok" : "selo selo--reprovado"}">
-        ${aprovado ? "✓ Homologado" : "Não atingiu a nota mínima (7,0)"}
+      <div class="${homologado ? "selo selo--ok" : (atingiuNota ? "selo selo--pendente" : "selo selo--reprovado")}">
+        ${homologado
+          ? "✓ Homologado pelo administrador"
+          : (recusado
+            ? "Homologação recusada pelo administrador"
+            : (atingiuNota
+              ? "Nota mínima atingida · aguardando homologação"
+              : "Não atingiu a nota mínima (7,0)"))}
       </div>
       <hr class="trilho" />
       <div class="toolbar" style="justify-content:center">
-        ${aprovado ? '<button class="btn btn--primary" data-pdf>Baixar certificado (PDF)</button>' : ""}
+        ${homologado ? '<button class="btn btn--primary" data-pdf>Baixar certificado (PDF)</button>' : ""}
         <a class="btn btn--ghost" href="${estado.perfil.role === "admin" ? "dashboard.html" : "perfil.html"}">
           ${estado.perfil.role === "admin" ? "Ir ao painel" : "Ver meu histórico"}
         </a>
       </div>
-      ${aprovado
+      ${homologado
         ? `<p class="muted small" style="margin-top:1rem">Código de verificação: ${codigo}</p>`
-        : `<p class="muted small" style="margin-top:1rem">O certificado só é emitido quando a nota mínima é atingida. Você pode refazer a prova.</p>`}
+        : (recusado
+          ? `<p class="muted small" style="margin-top:1rem">O certificado não foi liberado. Consulte o administrador responsável.</p>`
+          : (atingiuNota
+            ? `<p class="muted small" style="margin-top:1rem">Sua prova foi enviada ao histórico do administrador. O download aparecerá em <b>Meu perfil</b> após a conferência e homologação.</p>`
+            : `<p class="muted small" style="margin-top:1rem">O certificado só pode ser solicitado quando a nota mínima é atingida. Você pode refazer a prova.</p>`))}
     </div>
     <h2 style="margin-top:1.6rem">Revisão da prova</h2>
     <p class="muted">Confira o gabarito de cada questão.</p>
     ${revisao}`;
 
-  // O certificado só existe para quem atingiu a nota mínima.
+  // Mesmo com a tela aberta, o banco revalida a homologação no clique.
   const btnPdf = host.querySelector("[data-pdf]");
-  if (btnPdf) btnPdf.addEventListener("click", async (e) => {
-    travarBtn(e.target, true, "Gerando…");
-    await gerarCertificadoPDF({
-      aluno_nome: t.aluno_nome, matricula: estado.perfil.matricula,
-      prova_titulo: t.prova_titulo, nota: t.nota, acertos: t.acertos, total: t.total,
-      aprovado: t.aprovado, instrutor_nome: t.instrutor_nome, realizado_em: t.realizado_em,
-      nota_minima: estado.prova.nota_minima ?? 7, codigo, area: estado.perfil.area,
-    });
-    travarBtn(e.target, false, "Baixar certificado (PDF)");
-  });
+  if (btnPdf) btnPdf.addEventListener("click", (e) =>
+    baixarCertificadoHomologado(t.id, e.currentTarget));
   window.scrollTo({ top: 0 });
 }
 

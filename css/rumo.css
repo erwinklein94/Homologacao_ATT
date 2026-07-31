@@ -269,6 +269,9 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
 .badge--erro  { background: #fdeaea; color: #9a2a2d; }
 .badge--aviso { background: #fdf0e6; color: #9a5b13; }
 .badge--dot::before { content: ""; width: .5rem; height: .5rem; border-radius: 50%; background: currentColor; }
+.homologacao-cell { min-width: 170px; }
+.homologacao-cell small { display: block; margin-top: .35rem; max-width: 220px; color: var(--rumo-cinza); line-height: 1.35; }
+.acoes-homologacao { display: flex; gap: .4rem; align-items: center; }
 
 /* =====================================================================
    LOGIN
@@ -348,6 +351,7 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
 .resultado { text-align: center; padding: 2rem 1.4rem; }
 .resultado__nota { font-size: 4rem; font-weight: 800; line-height: 1; letter-spacing: -0.02em; }
 .resultado--ok .resultado__nota { color: var(--rumo-verde); }
+.resultado--pendente .resultado__nota { color: #9a5b13; }
 .resultado--reprovado .resultado__nota { color: var(--rumo-erro); }
 .resultado__faixa { font-size: 1.05rem; font-weight: 700; margin: .4rem 0 1rem; }
 .selo {
@@ -355,6 +359,7 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; backgro
   text-transform: uppercase; padding: .5rem 1.1rem; border-radius: 999px; font-size: .9rem;
 }
 .selo--ok { background: var(--rumo-verde); color: #fff; }
+.selo--pendente { background: #fff1cc; color: #704800; }
 .selo--reprovado { background: var(--rumo-cinza-100); color: var(--rumo-texto); }
 
 /* =====================================================================

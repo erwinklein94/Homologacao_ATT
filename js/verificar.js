@@ -46,8 +46,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!linhas.length) {
       resultado.innerHTML = `
         <div class="alerta alerta--erro">
-          <b>Certificado não encontrado.</b><br>
-          Nenhum registro corresponde ao código <b>${escaparHtml(codigo)}</b>. Confira a digitação; se o código estiver correto, o documento pode não ser autêntico.
+          <b>Certificado não encontrado ou ainda não homologado.</b><br>
+          Nenhum certificado liberado corresponde ao código <b>${escaparHtml(codigo)}</b>. Confira a digitação; documentos pendentes ou recusados não são reconhecidos como válidos.
         </div>`;
       return;
     }

@@ -117,7 +117,8 @@ function renderHistorico() {
       <div>
         <p class="muted" style="margin:0 0 1rem">
           Histórico do treinamento <b>${escaparHtml(getSubareaMeta(adm.subarea).nome)}</b>: todos os registros em um só lugar —
-          as provas feitas pelos alunos no site entram aqui automaticamente e tudo pode ser editado.
+          as provas feitas pelos alunos no site entram aqui automaticamente. Aprovações acima da nota mínima
+          ficam pendentes até você homologar ou recusar a emissão do certificado.
         </p>
         <div class="kpis" data-hist-kpis></div>
       </div>
@@ -247,6 +248,15 @@ function renderHistorico() {
             <option value="reprov">Reprovados</option>
           </select>
         </div>
+        <div class="field" style="margin:0;min-width:190px">
+          <label for="h-homologacao">Homologação</label>
+          <select id="h-homologacao" class="select" data-h-homologacao>
+            <option value="">Todas</option>
+            <option value="pendente">Pendentes</option>
+            <option value="aprovada">Homologadas</option>
+            <option value="recusada">Recusadas</option>
+          </select>
+        </div>
         <div class="field" style="margin:0;align-self:flex-end;display:flex;gap:.5rem">
           <button class="btn btn--ghost" type="button" data-hist-exportar>⬇ Exportar Excel</button>
           <button class="btn btn--primary" type="button" data-hist-novo>Adicionar registro</button>
@@ -260,11 +270,13 @@ function renderHistorico() {
     empresa: host.querySelector("[data-h-empresa]").value,
     modalidade: host.querySelector("[data-h-modalidade]").value,
     result: host.querySelector("[data-h-result]").value,
+    homologacao: host.querySelector("[data-h-homologacao]").value,
   });
   host.querySelector("[data-h-part]").addEventListener("input", aplicar);
   host.querySelector("[data-h-empresa]").addEventListener("change", aplicar);
   host.querySelector("[data-h-modalidade]").addEventListener("change", aplicar);
   host.querySelector("[data-h-result]").addEventListener("change", aplicar);
+  host.querySelector("[data-h-homologacao]").addEventListener("change", aplicar);
 
   host.querySelector("[data-hist-novo]").addEventListener("click", () => abrirFormHistorico(null));
   host.querySelector("[data-hist-exportar]").addEventListener("click", exportarHistoricoExcel);
@@ -301,6 +313,10 @@ function exportarHistoricoExcel() {
     "Instrutor/Fiscal": r.instrutor || "",
     "Nota": (typeof r.nota === "number" && !isNaN(r.nota)) ? r.nota : "",
     "Resultado": r.aprovacao || "",
+    "Homologação": rotuloHomologacao(r.status_homologacao),
+    "Decidido por": r.homologado_por_nome || "",
+    "Data da decisão": r.homologado_em ? fmtData(r.homologado_em) : "",
+    "Motivo da recusa": r.motivo_recusa || "",
   }));
 
   const ws = XLSX.utils.json_to_sheet(dados);
@@ -308,7 +324,7 @@ function exportarHistoricoExcel() {
   ws["!cols"] = [
     { wch: 11 }, { wch: 26 }, { wch: 26 }, { wch: 46 }, { wch: 24 }, { wch: 14 },
     { wch: 16 }, { wch: 20 }, { wch: 12 }, { wch: 11 }, { wch: 13 }, { wch: 22 },
-    { wch: 7 }, { wch: 11 },
+    { wch: 7 }, { wch: 11 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 36 },
   ];
   const wb = XLSX.utils.book_new();
   const nomeTreino = (window.getSubareaMeta ? getSubareaMeta(adm.subarea).nome : "Histórico").slice(0, 28);
@@ -425,10 +441,88 @@ async function salvarRegistroHistorico(e) {
 async function excluirRegistroHistorico(id) {
   const r = (adm.historico || []).find((x) => x.id === id);
   if (!r) return;
+  if (r.tentativa_id) {
+    alert("Registros de provas realizadas no site fazem parte da auditoria e não podem ser excluídos.");
+    return;
+  }
   const ok = confirm(`Excluir do histórico o registro de ${r.participante || "participante"} (${fmtDataHist(r.data_inicio)})? Essa ação não pode ser desfeita.`);
   if (!ok) return;
   const { error } = await sb.from("historico_alivio_tensao").delete().eq("id", id);
   if (error) { alert("Erro ao excluir: " + error.message); return; }
+  await carregarHistoricoAlivio();
+  renderHistorico();
+}
+
+function rotuloHomologacao(status) {
+  return ({
+    pendente: "Pendente",
+    aprovada: "Homologada",
+    recusada: "Recusada",
+    nao_aplicavel: "Não se aplica",
+  })[status] || "Não se aplica";
+}
+
+function badgeHomologacao(r) {
+  if (!r.tentativa_id || r.status_homologacao === "nao_aplicavel") {
+    return '<span class="muted small">Não se aplica</span>';
+  }
+  if (r.status_homologacao === "aprovada") {
+    const detalhe = r.homologado_em
+      ? `<small>por ${escaparHtml(r.homologado_por_nome || "Administrador")}<br>${fmtData(r.homologado_em)}</small>`
+      : "";
+    return `<span class="badge badge--ok badge--dot">Homologada</span>${detalhe}`;
+  }
+  if (r.status_homologacao === "recusada") {
+    const motivo = r.motivo_recusa
+      ? `<small title="${escaparHtml(r.motivo_recusa)}">${escaparHtml(r.motivo_recusa)}</small>`
+      : "";
+    return `<span class="badge badge--erro badge--dot">Recusada</span>${motivo}`;
+  }
+  return '<span class="badge badge--aviso badge--dot">Pendente</span><small>Certificado bloqueado</small>';
+}
+
+async function decidirHomologacao(tentativaId, decisao, botao) {
+  const registro = (adm.historico || []).find((r) => r.tentativa_id === tentativaId);
+  if (!registro) return;
+
+  let motivo = null;
+  if (decisao === "aprovar") {
+    const ok = confirm(
+      `Homologar a prova de ${registro.participante || "este aluno"} com nota ${fmtNota(registro.nota)}?\n\n` +
+      "O certificado ficará disponível imediatamente para download e verificação pública."
+    );
+    if (!ok) return;
+  } else {
+    motivo = prompt(
+      `Informe o motivo para recusar a homologação da prova de ${registro.participante || "este aluno"}:`
+    );
+    if (motivo === null) return;
+    motivo = motivo.trim();
+    if (!motivo) {
+      alert("O motivo da recusa é obrigatório.");
+      return;
+    }
+  }
+
+  const botoes = document.querySelectorAll(`[data-tentativa-homologacao="${tentativaId}"]`);
+  botoes.forEach((b) => { b.disabled = true; });
+  const textoOriginal = botao.textContent;
+  botao.textContent = decisao === "aprovar" ? "Homologando…" : "Recusando…";
+
+  const { error } = await sb.rpc("decidir_homologacao", {
+    p_tentativa_id: tentativaId,
+    p_decisao: decisao,
+    p_motivo: motivo,
+  });
+
+  if (error) {
+    console.error(error);
+    botoes.forEach((b) => { b.disabled = false; });
+    botao.textContent = textoOriginal;
+    alert("Não foi possível registrar a decisão: " + error.message);
+    return;
+  }
+
   await carregarHistoricoAlivio();
   renderHistorico();
 }
@@ -440,6 +534,7 @@ function desenharTabelaHistorico(dados, f) {
     if (f.modalidade && (r.modalidade || "").toUpperCase() !== f.modalidade) return false;
     if (f.result === "ok" && r.aprovacao !== "APROVADO") return false;
     if (f.result === "reprov" && r.aprovacao !== "REPROVADO") return false;
+    if (f.homologacao && r.status_homologacao !== f.homologacao) return false;
     return true;
   });
 
@@ -452,11 +547,15 @@ function desenharTabelaHistorico(dados, f) {
     const notas = linhas.map((r) => r.nota).filter((n) => typeof n === "number" && !isNaN(n));
     const aprov = linhas.filter((r) => r.aprovacao === "APROVADO").length;
     const reprov = linhas.filter((r) => r.aprovacao === "REPROVADO").length;
+    const pendentes = linhas.filter((r) => r.status_homologacao === "pendente").length;
+    const homologados = linhas.filter((r) => r.status_homologacao === "aprovada").length;
     const media = notas.length ? notas.reduce((a, b) => a + b, 0) / notas.length : null;
     kpis.innerHTML = `
       <div class="kpi"><div class="kpi__label">Registros</div><div class="kpi__value">${linhas.length}</div></div>
       <div class="kpi kpi--verde"><div class="kpi__label">Aprovados</div><div class="kpi__value">${aprov}</div></div>
       <div class="kpi"><div class="kpi__label">Reprovados</div><div class="kpi__value">${reprov}</div></div>
+      <div class="kpi"><div class="kpi__label">Aguardando homologação</div><div class="kpi__value">${pendentes}</div></div>
+      <div class="kpi kpi--verde"><div class="kpi__label">Certificados liberados</div><div class="kpi__value">${homologados}</div></div>
       <div class="kpi"><div class="kpi__label">Média das notas</div><div class="kpi__value">${media === null ? "—" : fmtNota(media)}</div><div class="kpi__sub">${notas.length} com nota lançada</div></div>`;
   }
 
@@ -474,6 +573,16 @@ function desenharTabelaHistorico(dados, f) {
     const nota = (typeof r.nota === "number" && !isNaN(r.nota)) ? `<b>${fmtNota(r.nota)}</b>` : '<span class="muted">—</span>';
     const modalidade = r.modalidade && r.modalidade !== "—"
       ? r.modalidade.charAt(0) + r.modalidade.slice(1).toLowerCase() : "—";
+    const homologacao = badgeHomologacao(r);
+    const acoes = r.tentativa_id
+      ? (r.status_homologacao === "pendente"
+        ? `<div class="acoes-homologacao">
+            <button class="btn btn--success btn--sm" data-tentativa-homologacao="${r.tentativa_id}" data-homologar="${r.tentativa_id}">Homologar</button>
+            <button class="btn btn--danger btn--sm" data-tentativa-homologacao="${r.tentativa_id}" data-recusar="${r.tentativa_id}">Recusar</button>
+          </div>`
+        : '<span class="muted small">Decisão registrada</span>')
+      : `<button class="btn btn--ghost btn--sm" data-hist-editar="${r.id}">Editar</button>
+         <button class="btn btn--danger btn--sm" data-hist-excluir="${r.id}">Excluir</button>`;
     return `<tr>
       <td class="nowrap">${fmtDataHist(r.data_inicio)}</td>
       <td>${escaparHtml(r.participante)}</td>
@@ -488,10 +597,8 @@ function desenharTabelaHistorico(dados, f) {
       <td>${escaparHtml(r.instrutor || "—")}</td>
       <td class="nowrap">${nota}</td>
       <td>${badgeRes}</td>
-      <td class="nowrap">
-        <button class="btn btn--ghost btn--sm" data-hist-editar="${r.id}">Editar</button>
-        <button class="btn btn--danger btn--sm" data-hist-excluir="${r.id}">Excluir</button>
-      </td>
+      <td class="homologacao-cell">${homologacao}</td>
+      <td class="nowrap">${acoes}</td>
     </tr>`;
   }).join("");
 
@@ -502,7 +609,7 @@ function desenharTabelaHistorico(dados, f) {
         <thead><tr>
           <th>Data</th><th>Participante</th><th>E-mail</th><th>Especificação técnica / orientação</th><th>Função</th><th>Empresa</th>
           <th>Matrícula/CPF</th><th>Local</th><th>Gerência</th><th>Modalidade</th>
-          <th>Instrutor/Fiscal</th><th>Nota</th><th>Resultado</th><th>Ações</th>
+          <th>Instrutor/Fiscal</th><th>Nota</th><th>Resultado da prova</th><th>Homologação</th><th>Ações</th>
         </tr></thead>
         <tbody>${corpo}</tbody>
       </table>
@@ -512,6 +619,10 @@ function desenharTabelaHistorico(dados, f) {
     b.addEventListener("click", () => abrirFormHistorico(b.dataset.histEditar)));
   host.querySelectorAll("[data-hist-excluir]").forEach((b) =>
     b.addEventListener("click", () => excluirRegistroHistorico(b.dataset.histExcluir)));
+  host.querySelectorAll("[data-homologar]").forEach((b) =>
+    b.addEventListener("click", () => decidirHomologacao(b.dataset.homologar, "aprovar", b)));
+  host.querySelectorAll("[data-recusar]").forEach((b) =>
+    b.addEventListener("click", () => decidirHomologacao(b.dataset.recusar, "recusar", b)));
 }
 
 // =====================================================================

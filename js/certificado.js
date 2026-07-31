@@ -1,10 +1,10 @@
 // =====================================================================
 // certificado.js — gera o certificado em PDF (jsPDF UMD)
-// Emitido SOMENTE para aprovados (nota mínima atingida), no modelo oficial
+// Emitido SOMENTE para tentativas aprovadas e homologadas pelo administrador.
 // (Certificado_Treinamentos.docx): arte de fundo azul/dourado, "Certificamos
 // que NOME, concluiu o treinamento de X no dia Y no modelo Z, com vencimento
 // na data W", duas assinaturas e logo Rumo no canto inferior direito.
-// Reprovado não recebe documento algum.
+// Tentativa reprovada, pendente ou recusada não recebe documento algum.
 // =====================================================================
 
 // Carrega uma imagem do projeto como dataURL (para embutir no PDF).
@@ -57,9 +57,9 @@ function _dataMaisMeses(iso, meses) {
 }
 
 async function gerarCertificadoPDF(d) {
-  // Sem a nota mínima NÃO há certificado. Os botões de download nem aparecem
-  // no site para reprovados; esta trava cobre chamadas diretas pelo console.
-  if (!d.aprovado) return;
+  // O banco é consultado antes do download. Esta segunda trava evita que uma
+  // tentativa pendente ou recusada chegue acidentalmente ao gerador.
+  if (!d.aprovado || d.status_homologacao !== "aprovada") return;
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
@@ -71,6 +71,40 @@ async function gerarCertificadoPDF(d) {
   const nomeArq = `certificado-${(d.aluno_nome || "aluno").toLowerCase().replace(/\s+/g, "-")}-${d.codigo}.pdf`;
   doc.save(nomeArq);
 }
+
+// Revalida a autorização no banco no momento exato do clique. Assim, uma tela
+// antiga não consegue baixar um certificado cuja homologação tenha sido recusada.
+async function baixarCertificadoHomologado(tentativaId, botao = null) {
+  const textoOriginal = botao?.textContent || "PDF";
+  if (botao) {
+    botao.disabled = true;
+    botao.textContent = "Validando…";
+  }
+
+  const { data, error } = await sb.rpc("obter_certificado", {
+    p_tentativa_id: tentativaId,
+  });
+  const certificado = Array.isArray(data) ? data[0] : data;
+
+  if (error || !certificado) {
+    console.error(error);
+    if (botao) {
+      botao.disabled = false;
+      botao.textContent = textoOriginal;
+    }
+    alert("Este certificado ainda não foi homologado ou não está mais disponível. Atualize a página para conferir a situação.");
+    return false;
+  }
+
+  if (botao) botao.textContent = "Gerando…";
+  await gerarCertificadoPDF(certificado);
+  if (botao) {
+    botao.disabled = false;
+    botao.textContent = textoOriginal;
+  }
+  return true;
+}
+window.baixarCertificadoHomologado = baixarCertificadoHomologado;
 
 // ------------------------------------------------- certificado (aprovado)
 async function _certificadoModeloOficial(doc, d, W, H) {
